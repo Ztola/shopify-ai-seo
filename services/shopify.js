@@ -42,9 +42,22 @@ async function updateProduct(id, data) {
     }
   });
 }
+async function markAsOptimized(productId) {
+  await shopify.post(`/metafields.json`, {
+    metafield: {
+      namespace: "ai_seo",
+      key: "optimized",
+      value: "true",
+      type: "single_line_text_field",
+      owner_resource: "product",
+      owner_id: productId
+    }
+  });
+}
 
 module.exports = {
   getProductById,
   getProductCollection,
   updateProduct
+  markAsOptimized
 };
