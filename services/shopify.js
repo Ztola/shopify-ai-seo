@@ -60,4 +60,14 @@ module.exports = {
   getProductCollection,
   updateProduct
   markAsOptimized
+  async function isAlreadyOptimized(productId) {
+  const res = await shopify.get(`/products/${productId}/metafields.json`);
+
+  return res.data.metafields.some(
+    (m) =>
+      m.namespace === "ai_seo" &&
+      m.key === "optimized" &&
+      m.value === "true"
+  );
+}
 };
