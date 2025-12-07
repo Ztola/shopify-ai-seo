@@ -9,21 +9,30 @@ const shopify = axios.create({
   }
 });
 
+// --- Récupérer un produit ---
 async function getProductById(id) {
   const res = await shopify.get(`/products/${id}.json`);
   return res.data.product;
 }
 
-async function getProductCollection(id) {
-  const res = await shopify.get(`/products/${id}/collections.json`);
+// --- Récupérer la collection principale d’un produit ---
+async function getProductCollection(productId) {
+  // 1) On récupère le collect (relation produit <-> collection)
+  const collects = await shopify.get(`/collects.json?product_id=${productId}`);
 
-  if (!res.data.collections || res.data.collections.length === 0) {
+  if (!collects.data.collects || collects.data.collects.length === 0) {
     return null;
   }
 
-  return res.data.collections[0];
+  const collectionId = collects.data.collects[0].collection_id;
+
+  // 2) On récupère la collection elle-même
+  const collection = await shopify.get(`/collections/${collectionId}.json`);
+
+  return collection.data.collection;
 }
 
+// --- Mettre à jour le produit ---
 async function updateProduct(id, data) {
   await shopify.put(`/products/${id}.json`, {
     product: {
