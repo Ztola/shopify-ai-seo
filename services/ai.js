@@ -8,35 +8,68 @@ async function optimizeProduct(product, collection = null) {
     collectionName = collection.title;
 
     const clean = collection.title
-      .replace(/collection|promo|officiel|produits/gi, "")
+      .replace(/collection|promo|officiel|produits|nouveautés/gi, "")
       .trim();
 
-    keyword = clean.split(" ")[0];
+    keyword = clean.split(" ")[0] || "";
   }
 
   const prompt = `
-Optimise ce produit Shopify en te basant sur :
+Tu es un expert en copywriting e-commerce et SEO.  
+Réécris ce produit Shopify de façon PRO, CLAIRE et CONVERTISSANTE.
+
+---
+
+### 🔍 INFORMATIONS SOURCE
 
 Titre : ${product.title}
-Description actuelle : ${product.body_html}
-Collection : ${collectionName}
-Mot clé principal : ${keyword}
 
-Objectifs :
-1. Génère un titre optimisé SEO
-2. Réécris une description complète en H2/H3
-3. Intègre le mot-clé principal (${keyword})
-4. Ajoute un maillage interne :
-   "Découvrez plus dans notre collection ${collectionName}" avec le lien :
+Description actuelle (HTML) :
+${product.body_html}
+
+Collection : ${collectionName}
+Mot-clé principal : ${keyword}
+
+---
+
+### 🎯 OBJECTIF FINAL
+
+Produire :
+
+1. **Un titre optimisé SEO** (mais court, vendeur, sans répétitions)
+2. **Une description HTML propre**, structurée avec :
+   - <h2>
+   - <h3>
+   - paragraphes
+   - listes à puces si utile
+   - **jamais de markdown**, jamais de "##"
+3. Aucune mention technique comme "meta description", pas de sections inutiles.
+4. Un style professionnel, vendeur, clair.
+5. Ajouter un paragraphe final avec un maillage interne élégant :
+   "Découvrez plus dans notre collection ${collectionName}"  
+   avec le lien :
    /collections/${collection?.handle ?? ""}
-5. Génère une meta description SEO (155 caractères)
+6. Génère aussi une **meta description SEO propre (155 caractères max)** séparément.
+
+---
+
+### 📝 FORMAT DE LA RÉPONSE (OBLIGATOIRE)
+
+Répond UNIQUEMENT en JSON :
+
+{
+  "title": "...",
+  "description_html": "...",
+  "meta_description": "..."
+}
 `;
 
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
       model: "gpt-4.1-mini",
-      messages: [{ role: "user", content: prompt }]
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" }
     },
     {
       headers: {
@@ -45,11 +78,11 @@ Objectifs :
     }
   );
 
-  const text = response.data.choices[0].message.content;
+  const data = JSON.parse(response.data.choices[0].message.content);
 
   return {
-    title: product.title,
-    body_html: text
+    title: data.title,
+    body_html: data.description_html
   };
 }
 
