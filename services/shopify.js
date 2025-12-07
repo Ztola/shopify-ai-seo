@@ -17,7 +17,6 @@ async function getProductById(id) {
 
 // --- Récupérer la collection principale d’un produit ---
 async function getProductCollection(productId) {
-  // 1) On récupère le collect (relation produit <-> collection)
   const collects = await shopify.get(`/collects.json?product_id=${productId}`);
 
   if (!collects.data.collects || collects.data.collects.length === 0) {
@@ -25,9 +24,8 @@ async function getProductCollection(productId) {
   }
 
   const collectionId = collects.data.collects[0].collection_id;
-
-  // 2) On récupère la collection elle-même
   const collection = await shopify.get(`/collections/${collectionId}.json`);
+
   return collection.data.collection;
 }
 
@@ -69,11 +67,110 @@ async function isAlreadyOptimized(productId) {
   );
 }
 
-// --- EXPORTS PROPREMENT ---
+/* ---------------------------------------------------------
+   SCRAPING COMPLET POUR MAILLAGE INTERNE (PRODUITS, COLLECTIONS, BLOGS)
+--------------------------------------------------------- */
+
+// --- Récupérer TOUTES LES COLLECTIONS (custom + smart) ---
+async function getAllCollections() {
+  const custom = await shopify.get(`/custom_collections.json?limit=250`);
+  const smart = await shopify.get(`/smart_collections.json?limit=250`);
+
+  return [
+    ...custom.data.custom_collections,
+    ...smart.data.smart_collections
+  ];
+}
+
+// --- Récupérer TOUS LES PRODUITS (pagination illimitée) ---
+async function getAllProducts() {
+  let products = [];
+  let url = `/products.json?limit=250`;
+
+  while (url) {
+    const res = await shopify.get(url);
+
+    products = products.concat(res.data.products);
+
+    const linkHeader = res.headers["link"];
+
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const nextUrl = linkHeader
+        .split(",")
+        .find((s) => s.includes('rel="next"'))
+        .match(/<(.+?)>/)[1]
+        .replace(
+          `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
+          ""
+        );
+      url = nextUrl;
+    } else {
+      url = null;
+    }
+  }
+
+  return products;
+}
+
+// --- Récupérer les produits d’une collection ---
+async function getProductsByCollection(collectionId) {
+  const res = await shopify.get(
+    `/collections/${collectionId}/products.json?limit=250`
+  );
+  return res.data.products;
+}
+
+// --- Récupérer TOUS LES BLOGS ---
+async function getAllBlogs() {
+  const res = await shopify.get(`/blogs.json`);
+  return res.data.blogs;
+}
+
+// --- Récupérer tous les articles d’un blog (pagination illimitée) ---
+async function getArticlesByBlog(blogId) {
+  let articles = [];
+  let url = `/blogs/${blogId}/articles.json?limit=250`;
+
+  while (url) {
+    const res = await shopify.get(url);
+
+    articles = articles.concat(res.data.articles);
+
+    const linkHeader = res.headers["link"];
+
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const nextUrl = linkHeader
+        .split(",")
+        .find((s) => s.includes('rel="next"'))
+        .match(/<(.+?)>/)[1]
+        .replace(
+          `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
+          ""
+        );
+      url = nextUrl;
+    } else {
+      url = null;
+    }
+  }
+
+  return articles;
+}
+
+/* ---------------------------------------------------------
+   EXPORTS
+--------------------------------------------------------- */
+
 module.exports = {
   getProductById,
   getProductCollection,
   updateProduct,
   markAsOptimized,
-  isAlreadyOptimized
+  isAlreadyOptimized,
+
+  getAllProducts,
+  getAllCollections,
+  getProductsByCollection,
+
+  getAllBlogs,
+  getArticlesByBlog
 };
