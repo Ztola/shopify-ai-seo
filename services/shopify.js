@@ -28,7 +28,6 @@ async function getProductCollection(productId) {
 
   // 2) On récupère la collection elle-même
   const collection = await shopify.get(`/collections/${collectionId}.json`);
-
   return collection.data.collection;
 }
 
@@ -38,10 +37,13 @@ async function updateProduct(id, data) {
     product: {
       id,
       title: data.title,
-      body_html: data.body_html
+      body_html: data.body_html,
+      handle: data.handle
     }
   });
 }
+
+// --- Ajouter un metafield : produit optimisé ---
 async function markAsOptimized(productId) {
   await shopify.post(`/metafields.json`, {
     metafield: {
@@ -55,12 +57,8 @@ async function markAsOptimized(productId) {
   });
 }
 
-module.exports = {
-  getProductById,
-  getProductCollection,
-  updateProduct
-  markAsOptimized
-  async function isAlreadyOptimized(productId) {
+// --- Vérifier si le produit est déjà optimisé ---
+async function isAlreadyOptimized(productId) {
   const res = await shopify.get(`/products/${productId}/metafields.json`);
 
   return res.data.metafields.some(
@@ -70,4 +68,12 @@ module.exports = {
       m.value === "true"
   );
 }
+
+// --- EXPORTS PROPREMENT ---
+module.exports = {
+  getProductById,
+  getProductCollection,
+  updateProduct,
+  markAsOptimized,
+  isAlreadyOptimized
 };
