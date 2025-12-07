@@ -1,25 +1,26 @@
 const express = require("express");
 const router = express.Router();
+const axios = require("axios");
 
+// Import services Shopify
 const { 
-  getProductById, 
-  getProductCollection, 
+  getProductById,
+  getProductCollection,
   updateProduct,
+  updateMetaDescription,
+  updateImagesAlt,
   markAsOptimized,
-  isAlreadyOptimized
+  isAlreadyOptimized,
+  getAllProducts
 } = require("../services/shopify");
 
+// Import IA
 const { optimizeProduct } = require("../services/ai");
 
-// Fonction pour découper en batch de 250
-function chunkArray(array, size = 250) {
-  const result = [];
-  for (let i = 0; i < array.length; i += size) {
-    result.push(array.slice(i, i + size));
-  }
-  return result;
-}
 
+// -------------------------------------------------------------
+// 1️⃣ Route : Optimiser UN SEUL produit
+// -------------------------------------------------------------
 router.post("/optimize", async (req, res) => {
   try {
     const { productId, force } = req.body;
@@ -28,28 +29,33 @@ router.post("/optimize", async (req, res) => {
       return res.status(400).json({ error: "Missing productId" });
     }
 
-    // Vérifier si le produit a déjà été optimisé
+    // Déjà optimisé ?
     const already = await isAlreadyOptimized(productId);
-
     if (already && !force) {
       return res.json({
         success: false,
         skipped: true,
-        message: "Ce produit a déjà été optimisé par l’IA. Pour forcer la ré-optimisation, envoyer { force: true }"
+        message: "Déjà optimisé. Envoyer { force: true } pour forcer."
       });
     }
 
-    // Récupération du produit et de la collection
+    // Récupération du produit et collection
     const product = await getProductById(productId);
     const collection = await getProductCollection(productId);
 
-    // Optimisation avec IA
-    const optimized = await optimizeProduct(product, collection);
+    // Charger shopData complet
+    const shopDataRes = await axios.get(
+      `${process.env.RENDER_APP_URL}/api/shop-data`
+    );
+    const shopData = shopDataRes.data;
 
-    // Mise à jour Shopify
+    // IA → optimisation SEO
+    const optimized = await optimizeProduct(product, collection, shopData);
+
+    // Mises à jour Shopify
     await updateProduct(productId, optimized);
-
-    // Enregistrement de l’état optimisé
+    await updateMetaDescription(productId, optimized.meta_description);
+    await updateImagesAlt(product, optimized.keyword);
     await markAsOptimized(productId);
 
     res.json({
@@ -60,69 +66,73 @@ router.post("/optimize", async (req, res) => {
 
   } catch (e) {
     console.error("❌ API Error:", e);
-    res.status(500).json({
-      error: "Internal Server Error",
-      details: e.message
-    });
+    res.status(500).json({ error: "Internal Server Error", details: e.message });
   }
 });
 
+
+// -------------------------------------------------------------
+// 2️⃣ Route : Batch optimisation (illimitée, par groupes de 250)
+// -------------------------------------------------------------
 router.post("/batch-optimize", async (req, res) => {
   try {
     const { productIds, force } = req.body;
 
-    if (!productIds || !Array.isArray(productIds)) {
+    if (!Array.isArray(productIds)) {
       return res.status(400).json({
         error: "productIds must be an array"
       });
     }
 
-    const batches = chunkArray(productIds, 250);
+    // Charger shopData complet 1 seule fois
+    const shopDataRes = await axios.get(
+      `${process.env.RENDER_APP_URL}/api/shop-data`
+    );
+    const shopData = shopDataRes.data;
+
+    // Diviser en batchs de 250
+    const batches = [];
+    for (let i = 0; i < productIds.length; i += 250) {
+      batches.push(productIds.slice(i, i + 250));
+    }
+
     const results = [];
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-
-      console.log(`🚀 Traitement du batch ${i + 1}/${batches.length}`);
+      console.log(`🚀 Batch ${i + 1}/${batches.length}`);
 
       for (const productId of batch) {
         try {
           const already = await isAlreadyOptimized(productId);
 
-          // Sauter produit déjà optimisé sauf si forcé
           if (already && !force) {
-            results.push({
-              productId,
-              status: "skipped",
-              reason: "Déjà optimisé"
-            });
+            results.push({ productId, status: "skipped" });
             continue;
           }
 
           const product = await getProductById(productId);
           const collection = await getProductCollection(productId);
 
-          const optimized = await optimizeProduct(product, collection);
+          const optimized = await optimizeProduct(product, collection, shopData);
 
           await updateProduct(productId, optimized);
+          await updateMetaDescription(productId, optimized.meta_description);
+          await updateImagesAlt(product, optimized.keyword);
           await markAsOptimized(productId);
 
-          results.push({
-            productId,
-            status: "optimized"
-          });
+          results.push({ productId, status: "optimized" });
 
         } catch (err) {
           results.push({
             productId,
             status: "error",
-            details: err.message
+            error: err.message
           });
         }
       }
 
-      // Pause entre les batchs pour respecter API Shopify
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((res) => setTimeout(res, 700));
     }
 
     res.json({
@@ -134,10 +144,72 @@ router.post("/batch-optimize", async (req, res) => {
 
   } catch (e) {
     console.error("❌ Batch Error:", e);
-    res.status(500).json({
-      error: "Batch optimization failed",
-      details: e.message
+    res.status(500).json({ error: "Batch failed", details: e.message });
+  }
+});
+
+
+// -------------------------------------------------------------
+// 3️⃣ Route : Récupération shop-data (produits, collections, blogs)
+// -------------------------------------------------------------
+router.get("/shop-data", async (req, res) => {
+  try {
+    const products = await getAllProducts();
+    const collections = await getAllCollections();
+    const blogs = await getAllBlogs();
+
+    const collectionMap = {};
+    const blogMap = {};
+
+    // Collections + produits
+    for (const col of collections) {
+      const colProducts = await getProductsByCollection(col.id);
+
+      collectionMap[col.handle] = {
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
+        products: colProducts.map(p => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle
+        }))
+      };
+    }
+
+    // Blogs + articles
+    for (const blog of blogs) {
+      const articles = await getArticlesByBlog(blog.id);
+
+      blogMap[blog.handle] = {
+        id: blog.id,
+        title: blog.title,
+        handle: blog.handle,
+        articles: articles.map(a => ({
+          id: a.id,
+          title: a.title,
+          handle: a.handle
+        }))
+      };
+    }
+
+    res.json({
+      success: true,
+      totalProducts: products.length,
+      totalCollections: collections.length,
+      totalBlogs: blogs.length,
+      collections: collectionMap,
+      blogs: blogMap,
+      products: products.map(p => ({
+        id: p.id,
+        title: p.title,
+        handle: p.handle
+      }))
     });
+
+  } catch (e) {
+    console.error("❌ Shop Data Error:", e);
+    res.status(500).json({ error: "Shop data error", details: e.message });
   }
 });
 
