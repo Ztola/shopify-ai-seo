@@ -2,10 +2,12 @@ const axios = require("axios");
 
 async function optimizeProduct(product, collection = null) {
   let collectionName = "";
+  let collectionHandle = "";
   let keyword = "";
 
   if (collection) {
     collectionName = collection.title;
+    collectionHandle = collection.handle;
 
     const clean = collection.title
       .replace(/collection|promo|officiel|produits|nouveautés/gi, "")
@@ -21,42 +23,65 @@ async function optimizeProduct(product, collection = null) {
 
   const prompt = `
 Tu es un expert en SEO + copywriting e-commerce.  
-Tu dois optimiser un produit Shopify pour obtenir un **excellent score SEO** tout en gardant un style vendeur et professionnel.
+Objectif : optimiser un produit Shopify pour un excellent score SEO + un style vendeur premium.
 
 ---
 
-### 🎯 DONNÉES SOURCE
+### 🎯 INFORMATIONS SOURCE
 
-Titre : ${product.title}
+Titre actuel :
+${product.title}
 
-Description actuelle :
+Description actuelle (HTML) :
 ${product.body_html}
 
 Collection : ${collectionName}
+Handle : ${collectionHandle}
 Mot-clé principal : ${keyword}
 
 ---
 
-### 🚀 OBJECTIFS SEO À RESPECTER ABSOLUMENT
+### 🚀 RÈGLES SEO OBLIGATOIRES
 
-1. Ajouter le mot-clé principal au **début du titre optimisé**
-2. Ajouter un **power word** dans le titre (ex : Premium, Luxe, Officiel, Pro, Ultime…)
-3. 600 mots minimum
-4. Utiliser le mot clé :
-   - dans le 1er paragraphe
+1. Le **mot-clé principal** doit apparaître :
+   - au début du titre
+   - dans la meta description
+   - dans le premier paragraphe
+   - dans les H2 et H3
    - dans tout le contenu (densité ≈ 1%)
-   - dans les H2 / H3
-   - dans un ALT d’image (balise <img alt="mot clé">)
-5. Ajouter un lien externe utile (ex : Wikipédia, Doctolib, Ameli)
-6. Ajouter un maillage interne (collection)
-7. Aucun markdown (pas de ###, pas de ***, pas de —)
-8. Format final **en HTML propre**
-9. Fournir la **meta description SEO** (155 caractères)
-10. Générer une URL optimisée (handle) courte < 75 caractères
+   - dans le ALT d’une image
+
+2. Le titre doit contenir un **power word** (Premium, Luxe, Officiel, Pro, Ultime…).
+
+3. Le contenu doit faire **minimum 600 mots**.
+
+4. Générer un ALT image SEO avec :
+   <img src="#" alt="${keyword}">
+
+5. Ajouter un lien externe utile vers :
+   https://fr.wikipedia.org/wiki/${keyword}
+
+6. Ajouter un **maillage interne propre** vers la collection :
+   <a href="/collections/${collectionHandle}">Découvrir la collection ${collectionName}</a>
+
+   ❗ STRICT :
+   - Aucun lien admin
+   - Aucun lien interne type https://admin.shopify.com
+   - Uniquement des URL front-office
+
+7. HTML propre obligatoire, pas de markdown :
+   - Pas de ##
+   - Pas de ***
+   - Pas de long traits ——
+
+8. 155 caractères max pour la **meta description SEO**.
+
+9. Générer un handle optimisé, court (< 75 caractères), sans espace, format Shopify :
+   "mot-cle-produit-optimise"
 
 ---
 
-### 📝 FORMAT DE SORTIE (OBLIGATOIRE EN JSON)
+### 📝 FORMAT SORTIE OBLIGATOIRE (JSON UNIQUEMENT)
 
 {
   "title": "...",
@@ -65,13 +90,13 @@ Mot-clé principal : ${keyword}
   "handle": "..."
 }
 
-GÉNÈRE UNIQUEMENT LE JSON SANS TEXTE AUTOUR.
+NE JAMAIS ajouter de texte autour.
   `;
 
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
-      model: "gpt-4.1",
+      model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" }
     },
@@ -84,10 +109,11 @@ GÉNÈRE UNIQUEMENT LE JSON SANS TEXTE AUTOUR.
 
   const data = JSON.parse(response.data.choices[0].message.content);
 
-  // Shopify n’accepte pas meta_description directement, mais on peut l’utiliser plus tard
   return {
     title: data.title,
-    body_html: data.description_html
+    body_html: data.description_html,
+    meta_description: data.meta_description,
+    handle: data.handle
   };
 }
 
