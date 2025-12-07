@@ -11,6 +11,15 @@ const {
 
 const { optimizeProduct } = require("../services/ai");
 
+// Fonction pour découper en batch de 250
+function chunkArray(array, size = 250) {
+  const result = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
+}
+
 router.post("/optimize", async (req, res) => {
   try {
     const { productId, force } = req.body;
@@ -57,5 +66,80 @@ router.post("/optimize", async (req, res) => {
     });
   }
 });
+
+router.post("/batch-optimize", async (req, res) => {
+  try {
+    const { productIds, force } = req.body;
+
+    if (!productIds || !Array.isArray(productIds)) {
+      return res.status(400).json({
+        error: "productIds must be an array"
+      });
+    }
+
+    const batches = chunkArray(productIds, 250);
+    const results = [];
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+
+      console.log(`🚀 Traitement du batch ${i + 1}/${batches.length}`);
+
+      for (const productId of batch) {
+        try {
+          const already = await isAlreadyOptimized(productId);
+
+          // Sauter produit déjà optimisé sauf si forcé
+          if (already && !force) {
+            results.push({
+              productId,
+              status: "skipped",
+              reason: "Déjà optimisé"
+            });
+            continue;
+          }
+
+          const product = await getProductById(productId);
+          const collection = await getProductCollection(productId);
+
+          const optimized = await optimizeProduct(product, collection);
+
+          await updateProduct(productId, optimized);
+          await markAsOptimized(productId);
+
+          results.push({
+            productId,
+            status: "optimized"
+          });
+
+        } catch (err) {
+          results.push({
+            productId,
+            status: "error",
+            details: err.message
+          });
+        }
+      }
+
+      // Pause entre les batchs pour respecter API Shopify
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    res.json({
+      success: true,
+      totalProducts: productIds.length,
+      batches: batches.length,
+      results
+    });
+
+  } catch (e) {
+    console.error("❌ Batch Error:", e);
+    res.status(500).json({
+      error: "Batch optimization failed",
+      details: e.message
+    });
+  }
+});
+
 
 module.exports = router;
