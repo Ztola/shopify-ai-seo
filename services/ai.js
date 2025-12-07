@@ -14,17 +14,22 @@ async function optimizeProduct(product, collection = null) {
     keyword = clean.split(" ")[0] || "";
   }
 
+  // Sécurité fallback
+  if (!keyword || keyword.length < 3) {
+    keyword = product.title.split(" ")[0];
+  }
+
   const prompt = `
-Tu es un expert en copywriting e-commerce et SEO.  
-Réécris ce produit Shopify de façon PRO, CLAIRE et CONVERTISSANTE.
+Tu es un expert en SEO + copywriting e-commerce.  
+Tu dois optimiser un produit Shopify pour obtenir un **excellent score SEO** tout en gardant un style vendeur et professionnel.
 
 ---
 
-### 🔍 INFORMATIONS SOURCE
+### 🎯 DONNÉES SOURCE
 
 Titre : ${product.title}
 
-Description actuelle (HTML) :
+Description actuelle :
 ${product.body_html}
 
 Collection : ${collectionName}
@@ -32,42 +37,41 @@ Mot-clé principal : ${keyword}
 
 ---
 
-### 🎯 OBJECTIF FINAL
+### 🚀 OBJECTIFS SEO À RESPECTER ABSOLUMENT
 
-Produire :
-
-1. **Un titre optimisé SEO** (mais court, vendeur, sans répétitions)
-2. **Une description HTML propre**, structurée avec :
-   - <h2>
-   - <h3>
-   - paragraphes
-   - listes à puces si utile
-   - **jamais de markdown**, jamais de "##"
-3. Aucune mention technique comme "meta description", pas de sections inutiles.
-4. Un style professionnel, vendeur, clair.
-5. Ajouter un paragraphe final avec un maillage interne élégant :
-   "Découvrez plus dans notre collection ${collectionName}"  
-   avec le lien :
-   /collections/${collection?.handle ?? ""}
-6. Génère aussi une **meta description SEO propre (155 caractères max)** séparément.
+1. Ajouter le mot-clé principal au **début du titre optimisé**
+2. Ajouter un **power word** dans le titre (ex : Premium, Luxe, Officiel, Pro, Ultime…)
+3. 600 mots minimum
+4. Utiliser le mot clé :
+   - dans le 1er paragraphe
+   - dans tout le contenu (densité ≈ 1%)
+   - dans les H2 / H3
+   - dans un ALT d’image (balise <img alt="mot clé">)
+5. Ajouter un lien externe utile (ex : Wikipédia, Doctolib, Ameli)
+6. Ajouter un maillage interne (collection)
+7. Aucun markdown (pas de ###, pas de ***, pas de —)
+8. Format final **en HTML propre**
+9. Fournir la **meta description SEO** (155 caractères)
+10. Générer une URL optimisée (handle) courte < 75 caractères
 
 ---
 
-### 📝 FORMAT DE LA RÉPONSE (OBLIGATOIRE)
-
-Répond UNIQUEMENT en JSON :
+### 📝 FORMAT DE SORTIE (OBLIGATOIRE EN JSON)
 
 {
   "title": "...",
   "description_html": "...",
-  "meta_description": "..."
+  "meta_description": "...",
+  "handle": "..."
 }
-`;
+
+GÉNÈRE UNIQUEMENT LE JSON SANS TEXTE AUTOUR.
+  `;
 
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
-      model: "gpt-4.1-mini",
+      model: "gpt-4.1",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" }
     },
@@ -80,6 +84,7 @@ Répond UNIQUEMENT en JSON :
 
   const data = JSON.parse(response.data.choices[0].message.content);
 
+  // Shopify n’accepte pas meta_description directement, mais on peut l’utiliser plus tard
   return {
     title: data.title,
     body_html: data.description_html
