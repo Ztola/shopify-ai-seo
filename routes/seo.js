@@ -51,7 +51,7 @@ Règles SEO obligatoires :
 16. Aucun emoji, aucun markdown.
 17. Aucune mention du type “version optimisée”, “optimisation automatique”, etc.
 18. Texte orienté conversion.
- 19. Ajouter 1 ou 2 liens interne HTML vers une ressource du site (Collections).
+19. Ajouter 1 ou 2 liens interne HTML vers une ressource du site (Collections).
 
 Format de sortie OBLIGATOIRE (JSON strict) :
 
