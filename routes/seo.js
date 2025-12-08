@@ -20,26 +20,27 @@ const {
    ============================================================ */
 router.get("/shop-data", async (req, res) => {
   try {
-    const products = await getAllProducts();
     const collections = await getAllCollections();
+
+    if (!collections) {
+      return res.status(500).json({ error: "No collections found" });
+    }
 
     const data = { collections: {} };
 
     for (const col of collections) {
-      const collectionHandle = col.handle;
-      const collectionTitle = col.title;
-      const collectionId = col.id;
+      const colId = col.id;
+      const colHandle = col.handle;
+      const colTitle = col.title;
 
-      // On filtre les produits qui ont la collection dans leur handle
-      const productsInCollection = products.filter(p =>
-        p?.collections?.includes(collectionHandle)
-      );
+      // 🔥 RECUPERATION DES PRODUITS DE LA COLLECTION
+      const products = await getProductsByCollection(colId);
 
-      data.collections[collectionHandle] = {
-        id: collectionId,
-        title: collectionTitle,
-        handle: collectionHandle,
-        products: productsInCollection.map(p => ({
+      data.collections[colHandle] = {
+        id: colId,
+        title: colTitle,
+        handle: colHandle,
+        products: products.map(p => ({
           id: p.id,
           title: p.title,
           handle: p.handle,
@@ -50,7 +51,6 @@ router.get("/shop-data", async (req, res) => {
 
     res.json({
       success: true,
-      total_products: products.length,
       total_collections: collections.length,
       data
     });
