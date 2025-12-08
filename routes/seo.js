@@ -1,89 +1,6 @@
-const express = require("express");
-const router = express.Router();
+const OpenAI = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const { getShopCache, refreshShopCache } = require("../services/cache");
-const {
-  getAllProducts,
-  getAllCollections,
-  getAllBlogs,
-  getProductsByCollection,
-  getArticlesByBlog,
-  getProductById
-} = require("../services/shopify");
-
-
-// ----------------------------------------
-// 📌 ROUTE : GET /api/shop-data
-// ----------------------------------------
-router.get("/shop-data", async (req, res) => {
-  try {
-    console.log("📦 Chargement complet de la boutique…");
-
-    const products = await getAllProducts();
-    const collections = await getAllCollections();
-    const blogs = await getAllBlogs();
-
-    let data = {
-      collections: {},
-      blogs: {}
-    };
-
-    // ----- COLLECTIONS -----
-    for (const col of collections) {
-      const colProducts = await getProductsByCollection(col.id);
-
-      data.collections[col.handle] = {
-        id: col.id,
-        title: col.title,
-        handle: col.handle,
-        products: colProducts.map(p => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle
-        }))
-      };
-    }
-
-    // ----- BLOGS -----
-    for (const blog of blogs) {
-      const articles = await getArticlesByBlog(blog.id);
-
-      data.blogs[blog.handle] = {
-        id: blog.id,
-        title: blog.title,
-        handle: blog.handle,
-        articles: articles.map(a => ({
-          id: a.id,
-          title: a.title,
-          handle: a.handle,
-          blog_handle: blog.handle
-        }))
-      };
-    }
-
-    res.json({
-      success: true,
-      shop: process.env.SHOPIFY_SHOP_URL,
-      total_products: products.length,
-      total_collections: collections.length,
-      total_blogs: blogs.length,
-      data
-    });
-
-  } catch (error) {
-    console.error("❌ Error /shop-data:", error);
-    res.status(500).json({
-      error: "Failed to load shop data",
-      details: error.message
-    });
-  }
-});
-
-
-// ---------------------------------------------------
-// 📌 ROUTE : POST /api/optimize-product
-// Optimise un produit via son ID Shopify
-// ---------------------------------------------------
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
@@ -101,32 +18,85 @@ router.post("/optimize-product", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Texte brut à optimiser
-    const rawText = `
-      TITLE: ${product.title}
-      DESCRIPTION: ${product.body_html}
-    `;
+    const title = product.title;
+    const description = product.body_html;
 
-    // --- Optimisation basique (remplacer par IA plus tard) ---
-    const optimized = `✨ Optimized version: ${product.title}`;
+    // -----------------------------------------
+    // GPT-4o : Optimisation SEO complète
+    // -----------------------------------------
+    const prompt = `
+Je suis un expert SEO Shopify. Optimise le produit suivant :
+
+TITRE :
+${title}
+
+DESCRIPTION :
+${description}
+
+EXIGENCES SEO (OBLIGATOIRES) :
+- Définir UN MOT-CLÉ PRINCIPAL.
+- Utiliser le mot-clé au début du titre SEO.
+- Ajouter un power word dans le titre.
+- Créer une Meta Description contenant le mot-clé (max 160 caractères).
+- Créer une URL SEO (max 75 caractères, tirets).
+- Réécrire une description HTML longue (600+ mots).
+- Le mot-clé doit être utilisé :
+  • Au début du contenu  
+  • Dans plusieurs paragraphes  
+  • Densité ≈ 1%  
+  • Dans les H2 et H3  
+- Ajouter un ALT image contenant le mot-clé.
+- Ajouter un lien interne (maillage interne) vers une collection générique.
+- Ajouter un lien externe fiable (Wikipedia, Ameli, etc.)
+- Paragraphes courts, lisibles.
+- Ton professionnel + storytelling léger.
+- Pas de duplication, générer un texte original.
+
+Réponds STRICTEMENT au format JSON suivant :
+
+{
+  "keyword": "...",
+  "seo_title": "...",
+  "seo_description": "...",
+  "seo_url": "...",
+  "optimized_description_html": "...",
+  "internal_link": {
+    "label": "...",
+    "url": "..."
+  },
+  "external_link": {
+    "label": "...",
+    "url": "..."
+  }
+}
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Tu es un expert SEO Shopify." },
+        { role: "user", content: prompt }
+      ]
+    });
+
+    const output = JSON.parse(completion.choices[0].message.content);
 
     res.json({
       success: true,
       productId,
       original: {
-        title: product.title,
-        description: product.body_html
+        title,
+        description
       },
-      optimized
+      optimized: output
     });
 
   } catch (error) {
     console.error("❌ Error /optimize-product:", error);
     res.status(500).json({
-      error: "Product optimization failed",
+      error: "Product SEO optimization failed",
       details: error.message
     });
   }
 });
-
-module.exports = router;
