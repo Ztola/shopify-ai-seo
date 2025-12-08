@@ -5,12 +5,13 @@ async function optimizeProduct(product, collection = null, shopData = null) {
   let collectionHandle = "";
   let keyword = "";
 
-  // Variables du maillage interne
   let relatedProducts = [];
   let relatedArticles = [];
   let collectionUrl = "";
 
-  // Détection collection + mot-clé
+  // --------------------------------------------
+  // 🔍 Extraire les infos de la collection
+  // --------------------------------------------
   if (collection) {
     collectionName = collection.title;
     collectionHandle = collection.handle;
@@ -22,92 +23,113 @@ async function optimizeProduct(product, collection = null, shopData = null) {
     keyword = clean.split(" ")[0] || "";
   }
 
-  // Fallback si mot-clé trop court
+  // Sécurité fallback
   if (!keyword || keyword.length < 3) {
     keyword = product.title.split(" ")[0];
   }
 
-  // Construire maillage interne
-  if (shopData && collection) {
-    const colHandle = collection.handle;
-    collectionUrl = `https://${process.env.SHOPIFY_SHOP_URL}/collections/${colHandle}`;
+  // --------------------------------------------
+  // 🔗 MAILLAGE INTERNE BASÉ SUR shopData
+  // --------------------------------------------
+  if (shopData && shopData.data && collectionHandle) {
+    const colData = shopData.data.collections[collectionHandle];
 
-    // 2 produits liés
-    const colData = shopData.collections[colHandle];
     if (colData) {
+      collectionUrl = `https://${process.env.SHOPIFY_SHOP_URL}/collections/${collectionHandle}`;
+
+      // Produits liés (max 2, éviter le même produit)
       relatedProducts = colData.products
         .filter(p => p.id !== product.id)
         .slice(0, 2);
     }
 
-    // 1 article lié
-    const blogs = Object.values(shopData.blogs);
-    if (blogs.length > 0 && blogs[0].articles.length > 0) {
-      relatedArticles.push(blogs[0].articles[0]);
+    // Article de blog (max 1)
+    const blogs = shopData.data.blogs;
+    if (blogs) {
+      const firstBlog = Object.values(blogs)[0];
+      if (firstBlog && firstBlog.articles.length > 0) {
+        relatedArticles = [firstBlog.articles[0]];
+      }
     }
   }
 
-  // Liens IA
+  // Objet complet pour l'IA
   const internalLinks = {
     collection: collectionUrl,
-    products: relatedProducts.map(p => ({
+    products: relatedProducts.map((p) => ({
       title: p.title,
       url: `https://${process.env.SHOPIFY_SHOP_URL}/products/${p.handle}`
     })),
-    articles: relatedArticles.map(a => ({
+    articles: relatedArticles.map((a) => ({
       title: a.title,
-      url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/news/${a.handle}`
+      url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${a.blog_handle}/${a.handle}`
     }))
   };
 
-
-  // PROMPT IA
+  // --------------------------------------------
+  // 🧠 PROMPT IA SEO PRO (GPT-4o)
+  // --------------------------------------------
   const prompt = `
-Tu es un expert en SEO + copywriting e-commerce.
-Optimise une fiche produit Shopify en HTML propre (sans markdown).
+Tu es un expert en SEO e-commerce + copywriting premium.
+Optimise une fiche produit Shopify pour un maximum de conversions et un score SEO parfait.
 
----
-
-### DONNÉES SOURCE
-
-Liens internes disponibles :
+====================
+🔗 MAILLAGE INTERNE
+====================
+Voici les liens internes disponibles :
 ${JSON.stringify(internalLinks, null, 2)}
 
-Titre actuel :
-${product.title}
+====================
+📦 DONNÉES PRODUIT
+====================
+Titre : ${product.title}
 
-Description actuelle :
+Description HTML actuelle :
 ${product.body_html}
 
 Collection : ${collectionName}
 Handle : ${collectionHandle}
 Mot-clé principal : ${keyword}
 
----
+====================
+🎯 RÈGLES SEO STRICTES
+====================
 
-### RÈGLES SEO OBLIGATOIRES
+1. Le mot-clé principal doit apparaître :
+   - au début du titre
+   - dans la méta description
+   - dans le premier paragraphe
+   - dans plusieurs H2/H3
+   - dans tout le contenu (≈ 1% densité)
+   - dans l’attribut ALT d’une image
 
-1. Mot-clé principal en début de titre, meta description, H2/H3, 1er paragraphe et alt image.
-2. Titre doit contenir un power word (Premium, Pro, Luxe…).
-3. 600 mots minimum.
-4. ALT image :
+2. Titre obligatoire avec un power word :
+   (Premium, Luxe, Ultime, Officiel, Haute Performance, etc.)
+
+3. Contenu minimum 600 mots, ton professionnel, fluide, vendeur.
+
+4. Ajouter une image avec ALT :
    <img src="#" alt="${keyword}">
-5. Lien externe utile :
+
+5. Ajouter un lien externe Wikipedia :
    https://fr.wikipedia.org/wiki/${keyword}
-6. Maillage interne naturel :
-   - Collection : ${internalLinks.collection}
-   - Produits : utiliser internalLinks.products
-   - Article : utiliser internalLinks.articles
-7. HTML propre :
-   - pas de markdown
-   - pas de ##, ***, ----
-8. Meta description max 155 caractères.
-9. Handle optimisé court (< 75 caractères), format Shopify.
 
----
+6. Ajouter un maillage interne propre (HTML) :
+   - 1 lien collection
+   - 2 liens produits
+   - 1 lien article de blog
+   Aucun lien Shopify Admin.
 
-### FORMAT SORTIE JSON UNIQUEMENT
+7. HTML propre obligatoire :
+   - PAS de ##, PAS de markdown, PAS de ---, PAS de **
 
+8. Générer une méta description optimisée (max 155 caractères)
+
+9. Générer un handle Shopify (< 75 caractères, tout en minuscules, tirets)
+
+====================
+📝 FORMAT DE SORTIE OBLIGATOIRE (JSON)
+====================
 {
   "title": "...",
   "description_html": "...",
@@ -115,9 +137,12 @@ Mot-clé principal : ${keyword}
   "handle": "..."
 }
 
-NE PAS ajouter de texte hors du JSON.
-`;
+Réponds UNIQUEMENT avec ce JSON.
+  `;
 
+  // --------------------------------------------
+  // 🔗 APPEL API OPENAI
+  // --------------------------------------------
   const response = await axios.post(
     "https://api.openai.com/v1/chat/completions",
     {
@@ -138,8 +163,7 @@ NE PAS ajouter de texte hors du JSON.
     title: data.title,
     body_html: data.description_html,
     meta_description: data.meta_description,
-    handle: data.handle,
-    keyword: keyword
+    handle: data.handle
   };
 }
 
