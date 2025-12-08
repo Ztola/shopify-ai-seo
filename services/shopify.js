@@ -1,6 +1,11 @@
 const axios = require("axios");
 
 // Instance Shopify
+console.log(
+  "🔍 Testing Shopify URL:",
+  `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products.json`
+);
+
 const shopify = axios.create({
   baseURL: `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
   headers: {
