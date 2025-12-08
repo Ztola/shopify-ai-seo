@@ -1,41 +1,101 @@
+const express = require("express");
+const router = express.Router();
+const OpenAI = require("openai");
+
+const {
+  getAllProducts,
+  getAllCollections,
+  getAllBlogs,
+  getProductsByCollection,
+  getArticlesByBlog,
+  getProductById,
+  updateProduct,
+  markAsOptimized
+} = require("../services/shopify");
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// ------------------------------
+// GET /api/shop-data
+// ------------------------------
+router.get("/shop-data", async (req, res) => {
+  try {
+    const products = await getAllProducts();
+    const collections = await getAllCollections();
+    const blogs = await getAllBlogs();
+
+    let data = { collections: {}, blogs: {} };
+
+    for (const col of collections) {
+      const colProducts = await getProductsByCollection(col.id);
+
+      data.collections[col.handle] = {
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
+        products: colProducts.map(p => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle
+        }))
+      };
+    }
+
+    for (const blog of blogs) {
+      const articles = await getArticlesByBlog(blog.id);
+
+      data.blogs[blog.handle] = {
+        id: blog.id,
+        title: blog.title,
+        handle: blog.handle,
+        articles: articles.map(a => ({
+          id: a.id,
+          title: a.title,
+          handle: a.handle
+        }))
+      };
+    }
+
+    res.json({
+      success: true,
+      total_products: products.length,
+      total_collections: collections.length,
+      total_blogs: blogs.length,
+      data
+    });
+
+  } catch (error) {
+    console.error("❌ Error shop-data:", error);
+    res.status(500).json({
+      error: "Shop data error",
+      details: error.message
+    });
+  }
+});
+
 // -------------------------------------------------------
 // POST /api/optimize-product (SEO COMPLET)
 // -------------------------------------------------------
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
-
-    if (!productId)
+    if (!productId) {
       return res.status(400).json({ error: "Missing productId" });
+    }
 
     const product = await getProductById(productId);
-
-    if (!product)
+    if (!product) {
       return res.status(404).json({ error: "Product not found" });
+    }
 
     const prompt = `
-Tu es un expert SEO Shopify.
+Tu es expert SEO Shopify.  
+NE RENVOIE QUE DU JSON PUR.  
+PAS de markdown, PAS de \`\`\`, PAS de texte autour.
 
-⚠️ IMPORTANT — NE RENVOIE QUE DU JSON PUR.  
-Aucun texte avant ou après.  
-Aucun \`\`\`json, aucun markdown, aucun commentaire.  
-
-Optimise le produit selon ces règles :
-
-- Détecte automatiquement un mot-clé principal.
-- Ajoute ce mot-clé dans : titre SEO, H1, H2, H3, meta description, intro.
-- Description entre 600 et 800 mots.
-- Slug < 75 caractères, sans accents ni espaces.
-- Densité mot-clé ≈ 1%.
-- Paragraphe court pour la lisibilité.
-- Une seule image avec alt contenant le mot-clé.
-- Un seul lien interne vers /collections/moto ou /collections/casque-moto.
-- AUCUN lien externe.
-- NE JAMAIS ajouter : "Description optimisée automatiquement", "version optimisée", emojis, etc.
-- Le titre doit rester propre : pas d’emojis.
-
-Retourne *uniquement* ce JSON PUR :
-
+Structure demandée :
 {
  "keyword": "",
  "title": "",
@@ -45,10 +105,19 @@ Retourne *uniquement* ce JSON PUR :
  "description_html": ""
 }
 
-Voici les données du produit :
+Règles :
+- Titre propre, sans emojis.
+- Description 600–800 mots.
+- Mot-clé dans titre, méta, H1, H2, contenu.
+- Slug < 75 caractères, sans accents.
+- 1 lien interne maximum.
+- AUCUN lien externe.
+- Paragraphe court.
+- Aucun texte du style "version optimisée".
 
-TITRE : ${product.title}
-DESCRIPTION : ${product.body_html}
+Données produit :
+TITLE: ${product.title}
+DESCRIPTION: ${product.body_html}
     `;
 
     const ai = await openai.chat.completions.create({
@@ -59,47 +128,35 @@ DESCRIPTION : ${product.body_html}
 
     let output = ai.choices[0].message.content.trim();
 
-    // 🔥 Nettoyage anti-erreur JSON
+    // 🔥 Sécurité JSON
     output = output.replace(/```json/gi, "");
     output = output.replace(/```/g, "");
     output = output.trim();
 
     let json = JSON.parse(output);
 
-    // Mise à jour Shopify
+    // 🔄 Update Shopify
     await updateProduct(productId, {
       title: json.title,
       body_html: json.description_html,
-      handle: json.slug,
-      metafields: [
-        {
-          key: "meta_title",
-          namespace: "seo",
-          value: json.meta_title,
-          type: "single_line_text_field"
-        },
-        {
-          key: "meta_description",
-          namespace: "seo",
-          value: json.meta_description,
-          type: "multi_line_text_field"
-        }
-      ]
+      handle: json.slug
     });
 
     await markAsOptimized(productId);
 
-    res.json({
+    return res.json({
       success: true,
-      ...json,
-      message: "Produit optimisé avec succès"
+      message: "Produit optimisé",
+      ...json
     });
 
   } catch (error) {
-    console.error("❌ Error optimize-product:", error);
+    console.error("❌ Optimize error:", error);
     res.status(500).json({
       error: "Optimize error",
       details: error.message
     });
   }
 });
+
+module.exports = router;
