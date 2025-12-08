@@ -1,12 +1,14 @@
 const axios = require("axios");
 
-// Debug
+// Debug URL au démarrage
 console.log(
   "🔍 Testing Shopify URL:",
   `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products.json`
 );
 
+// ------------------------------------------------------
 // Instance Shopify
+// ------------------------------------------------------
 const shopify = axios.create({
   baseURL: `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
   headers: {
@@ -15,39 +17,35 @@ const shopify = axios.create({
   }
 });
 
-/* ---------------------------------------------------------
-   PRODUIT
---------------------------------------------------------- */
-
+// ------------------------------------------------------
+// Récupérer un produit
+// ------------------------------------------------------
 async function getProductById(id) {
   const res = await shopify.get(`/products/${id}.json`);
   return res.data.product;
 }
 
+// ------------------------------------------------------
+// Récupérer la collection principale d’un produit
+// ------------------------------------------------------
 async function getProductCollection(productId) {
   const collects = await shopify.get(`/collects.json?product_id=${productId}`);
 
-  if (!collects.data.collects?.length) return null;
+  if (!collects.data.collects || collects.data.collects.length === 0) {
+    return null;
+  }
 
   const collectionId = collects.data.collects[0].collection_id;
+  const collection = await shopify.get(`/collections/${collectionId}.json`);
 
-  // ESSAI CUSTOM COLLECTION
-  try {
-    const col = await shopify.get(`/custom_collections/${collectionId}.json`);
-    return col.data.custom_collection;
-  } catch (e) {}
-
-  // ESSAI SMART COLLECTION
-  try {
-    const col = await shopify.get(`/smart_collections/${collectionId}.json`);
-    return col.data.smart_collection;
-  } catch (e) {}
-
-  return null;
+  return collection.data.collection;
 }
 
+// ------------------------------------------------------
+// Mettre à jour un produit
+// ------------------------------------------------------
 async function updateProduct(id, data) {
-  return shopify.put(`/products/${id}.json`, {
+  await shopify.put(`/products/${id}.json`, {
     product: {
       id,
       title: data.title,
@@ -57,6 +55,9 @@ async function updateProduct(id, data) {
   });
 }
 
+// ------------------------------------------------------
+// Marquer un produit comme optimisé par l’IA
+// ------------------------------------------------------
 async function markAsOptimized(productId) {
   await shopify.post(`/metafields.json`, {
     metafield: {
@@ -70,54 +71,65 @@ async function markAsOptimized(productId) {
   });
 }
 
+// ------------------------------------------------------
+// Vérifier si déjà optimisé (évite double traitement)
+// ------------------------------------------------------
 async function isAlreadyOptimized(productId) {
   const res = await shopify.get(`/products/${productId}/metafields.json`);
+
   return res.data.metafields.some(
-    (m) => m.namespace === "ai_seo" && m.key === "optimized"
+    (m) =>
+      m.namespace === "ai_seo" &&
+      m.key === "optimized" &&
+      m.value === "true"
   );
 }
 
-/* ---------------------------------------------------------
-   PAGINATION STABLE (ZÉRO INVALID URL)
---------------------------------------------------------- */
+// ------------------------------------------------------
+// Récupérer toutes les collections (custom & smart)
+// ------------------------------------------------------
+async function getAllCollections() {
+  const custom = await shopify.get(`/custom_collections.json?limit=250`);
+  const smart = await shopify.get(`/smart_collections.json?limit=250`);
 
-function extractNextUrl(linkHeader) {
-  if (!linkHeader) return null;
-
-  const match = linkHeader.split(",").find(s => s.includes('rel="next"'));
-  if (!match) return null;
-
-  const url = match.match(/<(.+?)>/)[1];
-
-  // Transforme l'URL entière en chemin API
-  const clean = url.replace(`https://${process.env.SHOPIFY_SHOP_URL}`, "");
-
-  return clean;
+  return [
+    ...custom.data.custom_collections,
+    ...smart.data.smart_collections
+  ];
 }
 
-/* ---------------------------------------------------------
-   SCRAPING COMPLET
---------------------------------------------------------- */
-
+// ------------------------------------------------------
+// Récupérer tous les produits (pagination automatique)
+// ------------------------------------------------------
 async function getAllProducts() {
   let products = [];
   let url = `/products.json?limit=250`;
 
   while (url) {
     const res = await shopify.get(url);
+
     products = products.concat(res.data.products);
-    url = extractNextUrl(res.headers["link"]);
+
+    const linkHeader = res.headers["link"];
+
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const nextUrl = linkHeader
+        .split(",")
+        .find((s) => s.includes('rel="next"'))
+        .match(/<(.+?)>/)[1]
+        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, ""); // FIX UNIVERSAL
+      url = nextUrl;
+    } else {
+      url = null;
+    }
   }
 
   return products;
 }
 
-async function getAllCollections() {
-  const custom = await shopify.get(`/custom_collections.json?limit=250`);
-  const smart = await shopify.get(`/smart_collections.json?limit=250`);
-  return [...custom.data.custom_collections, ...smart.data.smart_collections];
-}
-
+// ------------------------------------------------------
+// Produits d’une collection
+// ------------------------------------------------------
 async function getProductsByCollection(collectionId) {
   const res = await shopify.get(
     `/collections/${collectionId}/products.json?limit=250`
@@ -125,37 +137,57 @@ async function getProductsByCollection(collectionId) {
   return res.data.products;
 }
 
+// ------------------------------------------------------
+// Récupérer tous les blogs
+// ------------------------------------------------------
 async function getAllBlogs() {
   const res = await shopify.get(`/blogs.json`);
   return res.data.blogs;
 }
 
+// ------------------------------------------------------
+// Récupérer tous les articles d’un blog (pagination auto)
+// ------------------------------------------------------
 async function getArticlesByBlog(blogId) {
   let articles = [];
   let url = `/blogs/${blogId}/articles.json?limit=250`;
 
   while (url) {
     const res = await shopify.get(url);
+
     articles = articles.concat(res.data.articles);
-    url = extractNextUrl(res.headers["link"]);
+
+    const linkHeader = res.headers["link"];
+
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const nextUrl = linkHeader
+        .split(",")
+        .find((s) => s.includes('rel="next"'))
+        .match(/<(.+?)>/)[1]
+        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, ""); // FIX UNIVERSAL
+      url = nextUrl;
+    } else {
+      url = null;
+    }
   }
 
   return articles;
 }
 
-/* ---------------------------------------------------------
-   EXPORTS
---------------------------------------------------------- */
-
+// ------------------------------------------------------
+// EXPORTS
+// ------------------------------------------------------
 module.exports = {
   getProductById,
   getProductCollection,
   updateProduct,
   markAsOptimized,
   isAlreadyOptimized,
+
   getAllProducts,
   getAllCollections,
   getProductsByCollection,
+
   getAllBlogs,
   getArticlesByBlog
 };
