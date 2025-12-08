@@ -23,16 +23,23 @@ router.get("/shop-data", async (req, res) => {
     const products = await getAllProducts();
     const collections = await getAllCollections();
 
-    const data = {
-      collections: {}
-    };
+    const data = { collections: {} };
 
     for (const col of collections) {
-      data.collections[col.handle] = {
-        id: col.id,
-        title: col.title,
-        handle: col.handle,
-        products: col.products.map(p => ({
+      const collectionHandle = col.handle;
+      const collectionTitle = col.title;
+      const collectionId = col.id;
+
+      // On filtre les produits qui ont la collection dans leur handle
+      const productsInCollection = products.filter(p =>
+        p?.collections?.includes(collectionHandle)
+      );
+
+      data.collections[collectionHandle] = {
+        id: collectionId,
+        title: collectionTitle,
+        handle: collectionHandle,
+        products: productsInCollection.map(p => ({
           id: p.id,
           title: p.title,
           handle: p.handle,
@@ -50,9 +57,13 @@ router.get("/shop-data", async (req, res) => {
 
   } catch (error) {
     console.error("❌ Error shop-data:", error);
-    res.status(500).json({ error: "Shop data error", details: error.message });
+    res.status(500).json({
+      error: "Shop data error",
+      details: error.message
+    });
   }
 });
+
 
 /* ============================================================
    ROUTE 2 : POST /api/optimize-product  
