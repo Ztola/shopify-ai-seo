@@ -1,13 +1,29 @@
-dotenv.config();
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
 
-const seoRoutes = require("./routes/seo");
+dotenv.config();
 
 const app = express();
 
-@@ -13,6 +14,7 @@ app.use(express.json());
+// Middlewares
+app.use(cors());
+app.use(express.json());
 
-// ⚠️ IMPORTANT : Monte toutes les routes de SEO sous /api
+// IMPORT DES ROUTES SEO
+const seoRoutes = require("./routes/seo");
+
+// ROUTES API
 app.use("/api", seoRoutes);
 
-// Route de test
+// ROUTE TEST
 app.get("/", (req, res) => {
+  res.send("🔥 Shopify AI SEO App is running on Render!");
+});
+
+// Render attribue automatiquement PORT
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
