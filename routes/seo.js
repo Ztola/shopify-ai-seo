@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 
-// Import des fonctions Shopify
 const {
   getAllProducts,
   getAllCollections,
@@ -10,7 +9,8 @@ const {
   getArticlesByBlog,
   getProductById,
   updateProduct,
-  markAsOptimized
+  markAsOptimized,
+  getMetafields
 } = require("../services/shopify");
 
 
@@ -38,11 +38,29 @@ router.get("/shop-data", async (req, res) => {
         id: col.id,
         title: col.title,
         handle: col.handle,
-        products: colProducts.map(p => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle
-        }))
+        products: await Promise.all(
+          colProducts.map(async (p) => {
+
+            // Vérifier si déjà optimisé
+            let metafields = [];
+            try {
+              metafields = await getMetafields(p.id);
+            } catch (err) {
+              metafields = [];
+            }
+
+            const optimized = metafields.some(
+              m => m.namespace === "ai_seo" && m.key === "optimized" && m.value === "true"
+            );
+
+            return {
+              id: p.id,
+              title: p.title,
+              handle: p.handle,
+              optimized
+            };
+          })
+        )
       };
     }
 
@@ -92,32 +110,37 @@ router.post("/optimize-product", async (req, res) => {
       return res.status(400).json({ error: "Missing productId" });
     }
 
-    // 1️⃣ Récupération du produit Shopify
     const product = await getProductById(productId);
 
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // 2️⃣ Optimisation simple (tu pourras remplacer par OpenAI)
-    const optimizedTitle = `✨ Optimized: ${product.title}`;
-    const optimizedDescription = `<p>${product.body_html} (version optimisée)</p>`;
+    // TITRE POUR SHOPIFY -> On NE met PAS le ✨
+    const optimizedTitle = product.title;
 
-    // 3️⃣ Mise à jour Shopify
+    // DESCRIPTION optimisée simple (à améliorer plus tard)
+    const optimizedDescription = `
+      <h2>${product.title}</h2>
+      ${product.body_html}
+      <p><strong>Description optimisée automatiquement.</strong></p>
+    `;
+
+    // Mise à jour Shopify
     await updateProduct(productId, {
       title: optimizedTitle,
       body_html: optimizedDescription,
       handle: product.handle
     });
 
-    // 4️⃣ Marquer comme optimisé
+    // Marquer le produit comme optimisé
     await markAsOptimized(productId);
 
-    // 5️⃣ Réponse
     res.json({
       success: true,
       original_title: product.title,
-      optimized_title: optimizedTitle,
+      preview_title: "✨ Optimisé (prévisualisation WordPress)",
+      optimized_description: optimizedDescription,
       message: "Produit mis à jour sur Shopify ✔"
     });
 
@@ -129,7 +152,5 @@ router.post("/optimize-product", async (req, res) => {
     });
   }
 });
-
-
 
 module.exports = router;
