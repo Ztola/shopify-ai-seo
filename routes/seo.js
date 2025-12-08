@@ -1,9 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
+// IMPORTS DES SERVICES
 const { getShopCache, refreshShopCache } = require("../services/cache");
-
-// IMPORTANT : importer toutes les fonctions utilisées
 const {
   getAllProducts,
   getAllCollections,
@@ -12,11 +11,14 @@ const {
   getArticlesByBlog
 } = require("../services/shopify");
 
+
+// ------------------------------
+// 📌 ROUTE : GET /api/shop-data
+// ------------------------------
 router.get("/shop-data", async (req, res) => {
   try {
-    console.log("📦 Scraping complet de la boutique…");
+    console.log("📦 Chargement complet de la boutique…");
 
-    // Récupération brute
     const products = await getAllProducts();
     const collections = await getAllCollections();
     const blogs = await getAllBlogs();
@@ -26,9 +28,7 @@ router.get("/shop-data", async (req, res) => {
       blogs: {}
     };
 
-    // -------------------------
-    // 📌 COLLECTIONS STRUCTURÉES
-    // -------------------------
+    // ----- COLLECTIONS -----
     for (const col of collections) {
       const colProducts = await getProductsByCollection(col.id);
 
@@ -44,9 +44,7 @@ router.get("/shop-data", async (req, res) => {
       };
     }
 
-    // -------------------------
-    // 📌 BLOGS STRUCTURÉS
-    // -------------------------
+    // ----- BLOGS -----
     for (const blog of blogs) {
       const articles = await getArticlesByBlog(blog.id);
 
@@ -73,7 +71,7 @@ router.get("/shop-data", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Error shop-data:", error);
+    console.error("❌ Error /shop-data:", error);
     res.status(500).json({
       error: "Failed to load shop data",
       details: error.message
@@ -81,4 +79,36 @@ router.get("/shop-data", async (req, res) => {
   }
 });
 
+
+// ----------------------------------
+// 📌 ROUTE : POST /api/optimize
+// ----------------------------------
+router.post("/optimize", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text) {
+      return res.status(400).json({ error: "Missing 'text' in request body" });
+    }
+
+    // ⚠️ Ici tu mettras ton appel IA (OpenAI, Gemini, etc.)
+    // Pour l’instant on renvoie un résultat simple
+    const optimized = `✨ Optimized result: ${text}`;
+
+    res.json({
+      success: true,
+      optimized
+    });
+
+  } catch (error) {
+    console.error("❌ Error /optimize:", error);
+    res.status(500).json({
+      error: "Failed to optimize content",
+      details: error.message
+    });
+  }
+});
+
+
+// EXPORT ROUTER
 module.exports = router;
