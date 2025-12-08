@@ -1,102 +1,140 @@
-const OpenAI = require("openai");
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const express = require("express");
+const router = express.Router();
 
-router.post("/optimize-product", async (req, res) => {
+const {
+  getProductById,
+  getProductCollection,
+  updateProduct,
+  markAsOptimized,
+  isAlreadyOptimized
+} = require("../services/shopify");
+
+const { optimizeProduct } = require("../services/ai");
+const { getShopCache, refreshShopCache } = require("../services/cache");
+
+// ---------------------------------------------------------
+// 🔥 OPTIMISATION D’UN PRODUIT
+// ---------------------------------------------------------
+router.post("/optimize", async (req, res) => {
   try {
-    const { productId } = req.body;
+    const { productId, force } = req.body;
 
     if (!productId) {
-      return res.status(400).json({ error: "Missing 'productId' in body" });
+      return res.status(400).json({ error: "Missing productId" });
     }
 
-    console.log("🔎 Fetching product:", productId);
+    const already = await isAlreadyOptimized(productId);
 
-    // --- Récupération du produit Shopify ---
+    if (already && !force) {
+      return res.json({
+        success: false,
+        skipped: true,
+        message:
+          "Produit déjà optimisé. Ajouter { force: true } pour forcer."
+      });
+    }
+
+    // Charger cache Shopify
+    const shopData = await getShopCache();
+
     const product = await getProductById(productId);
+    const collection = await getProductCollection(productId);
 
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-
-    const title = product.title;
-    const description = product.body_html;
-
-    // -----------------------------------------
-    // GPT-4o : Optimisation SEO complète
-    // -----------------------------------------
-    const prompt = `
-Je suis un expert SEO Shopify. Optimise le produit suivant :
-
-TITRE :
-${title}
-
-DESCRIPTION :
-${description}
-
-EXIGENCES SEO (OBLIGATOIRES) :
-- Définir UN MOT-CLÉ PRINCIPAL.
-- Utiliser le mot-clé au début du titre SEO.
-- Ajouter un power word dans le titre.
-- Créer une Meta Description contenant le mot-clé (max 160 caractères).
-- Créer une URL SEO (max 75 caractères, tirets).
-- Réécrire une description HTML longue (600+ mots).
-- Le mot-clé doit être utilisé :
-  • Au début du contenu  
-  • Dans plusieurs paragraphes  
-  • Densité ≈ 1%  
-  • Dans les H2 et H3  
-- Ajouter un ALT image contenant le mot-clé.
-- Ajouter un lien interne (maillage interne) vers une collection générique.
-- Ajouter un lien externe fiable (Wikipedia, Ameli, etc.)
-- Paragraphes courts, lisibles.
-- Ton professionnel + storytelling léger.
-- Pas de duplication, générer un texte original.
-
-Réponds STRICTEMENT au format JSON suivant :
-
-{
-  "keyword": "...",
-  "seo_title": "...",
-  "seo_description": "...",
-  "seo_url": "...",
-  "optimized_description_html": "...",
-  "internal_link": {
-    "label": "...",
-    "url": "..."
-  },
-  "external_link": {
-    "label": "...",
-    "url": "..."
-  }
-}
-`;
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: "Tu es un expert SEO Shopify." },
-        { role: "user", content: prompt }
-      ]
+    const optimized = await optimizeProduct(product, collection, {
+      data: shopData
     });
 
-    const output = JSON.parse(completion.choices[0].message.content);
+    await updateProduct(productId, optimized);
+    await markAsOptimized(productId);
 
     res.json({
       success: true,
-      productId,
-      original: {
-        title,
-        description
-      },
-      optimized: output
+      optimized
     });
 
   } catch (error) {
-    console.error("❌ Error /optimize-product:", error);
-    res.status(500).json({
-      error: "Product SEO optimization failed",
-      details: error.message
-    });
+    console.error("❌ OPTIMIZE ERROR:", error);
+    res.status(500).json({ error: error.message });
   }
 });
+
+// ---------------------------------------------------------
+// ⚡ OPTIMISATION PAR LOT (batch 250)
+// ---------------------------------------------------------
+router.post("/batch-optimize", async (req, res) => {
+  try {
+    const { productIds, force } = req.body;
+
+    if (!Array.isArray(productIds)) {
+      return res.status(400).json({ error: "productIds must be an array" });
+    }
+
+    const shopData = await getShopCache();
+    const results = [];
+
+    const chunk = (arr, size = 250) =>
+      arr.reduce((acc, _, i) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
+
+    const batches = chunk(productIds);
+
+    for (const batch of batches) {
+      for (const productId of batch) {
+        try {
+          const already = await isAlreadyOptimized(productId);
+
+          if (already && !force) {
+            results.push({ productId, status: "skipped" });
+            continue;
+          }
+
+          const product = await getProductById(productId);
+          const collection = await getProductCollection(productId);
+
+          const optimized = await optimizeProduct(product, collection, {
+            data: shopData
+          });
+
+          await updateProduct(productId, optimized);
+          await markAsOptimized(productId);
+
+          results.push({ productId, status: "optimized" });
+
+        } catch (err) {
+          results.push({ productId, status: "error", details: err.message });
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
+    res.json({
+      success: true,
+      results
+    });
+
+  } catch (error) {
+    console.error("❌ BATCH ERROR:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------------------------------------------------------
+// 🔄 RAFRAÎCHIR LE CACHE
+// ---------------------------------------------------------
+router.get("/cache-refresh", async (req, res) => {
+  try {
+    const data = await refreshShopCache();
+
+    res.json({
+      success: true,
+      message: "Cache Shopify mis à jour !",
+      data
+    });
+
+  } catch (error) {
+    console.error("❌ CACHE ERROR:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+module.exports = router;
