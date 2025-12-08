@@ -1,20 +1,20 @@
 const express = require("express");
 const router = express.Router();
 
-// IMPORTS DES SERVICES
 const { getShopCache, refreshShopCache } = require("../services/cache");
 const {
   getAllProducts,
   getAllCollections,
   getAllBlogs,
   getProductsByCollection,
-  getArticlesByBlog
+  getArticlesByBlog,
+  getProductById
 } = require("../services/shopify");
 
 
-// ------------------------------
+// ----------------------------------------
 // 📌 ROUTE : GET /api/shop-data
-// ------------------------------
+// ----------------------------------------
 router.get("/shop-data", async (req, res) => {
   try {
     console.log("📦 Chargement complet de la boutique…");
@@ -80,35 +80,53 @@ router.get("/shop-data", async (req, res) => {
 });
 
 
-// ----------------------------------
-// 📌 ROUTE : POST /api/optimize
-// ----------------------------------
-router.post("/optimize", async (req, res) => {
+// ---------------------------------------------------
+// 📌 ROUTE : POST /api/optimize-product
+// Optimise un produit via son ID Shopify
+// ---------------------------------------------------
+router.post("/optimize-product", async (req, res) => {
   try {
-    const { text } = req.body;
+    const { productId } = req.body;
 
-    if (!text) {
-      return res.status(400).json({ error: "Missing 'text' in request body" });
+    if (!productId) {
+      return res.status(400).json({ error: "Missing 'productId' in body" });
     }
 
-    // ⚠️ Ici tu mettras ton appel IA (OpenAI, Gemini, etc.)
-    // Pour l’instant on renvoie un résultat simple
-    const optimized = `✨ Optimized result: ${text}`;
+    console.log("🔎 Fetching product:", productId);
+
+    // --- Récupération du produit Shopify ---
+    const product = await getProductById(productId);
+
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    // Texte brut à optimiser
+    const rawText = `
+      TITLE: ${product.title}
+      DESCRIPTION: ${product.body_html}
+    `;
+
+    // --- Optimisation basique (remplacer par IA plus tard) ---
+    const optimized = `✨ Optimized version: ${product.title}`;
 
     res.json({
       success: true,
+      productId,
+      original: {
+        title: product.title,
+        description: product.body_html
+      },
       optimized
     });
 
   } catch (error) {
-    console.error("❌ Error /optimize:", error);
+    console.error("❌ Error /optimize-product:", error);
     res.status(500).json({
-      error: "Failed to optimize content",
+      error: "Product optimization failed",
       details: error.message
     });
   }
 });
 
-
-// EXPORT ROUTER
 module.exports = router;
