@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const OpenAI = require("openai");
 
 const {
   getAllProducts,
@@ -13,24 +14,22 @@ const {
   getMetafields
 } = require("../services/shopify");
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
 
 // -------------------------------------------------------
 // GET /api/shop-data
 // -------------------------------------------------------
 router.get("/shop-data", async (req, res) => {
   try {
-    console.log("📦 Chargement complet de la boutique…");
-
     const products = await getAllProducts();
     const collections = await getAllCollections();
     const blogs = await getAllBlogs();
 
-    let data = {
-      collections: {},
-      blogs: {}
-    };
+    let data = { collections: {}, blogs: {} };
 
-    // STRUCTURE COLLECTIONS
     for (const col of collections) {
       const colProducts = await getProductsByCollection(col.id);
 
@@ -40,14 +39,8 @@ router.get("/shop-data", async (req, res) => {
         handle: col.handle,
         products: await Promise.all(
           colProducts.map(async (p) => {
-
-            // Vérifier si déjà optimisé
             let metafields = [];
-            try {
-              metafields = await getMetafields(p.id);
-            } catch (err) {
-              metafields = [];
-            }
+            try { metafields = await getMetafields(p.id); } catch {}
 
             const optimized = metafields.some(
               m => m.namespace === "ai_seo" && m.key === "optimized" && m.value === "true"
@@ -64,22 +57,6 @@ router.get("/shop-data", async (req, res) => {
       };
     }
 
-    // STRUCTURE BLOGS
-    for (const blog of blogs) {
-      const articles = await getArticlesByBlog(blog.id);
-
-      data.blogs[blog.handle] = {
-        id: blog.id,
-        title: blog.title,
-        handle: blog.handle,
-        articles: articles.map(a => ({
-          id: a.id,
-          title: a.title,
-          handle: a.handle
-        }))
-      };
-    }
-
     res.json({
       success: true,
       total_products: products.length,
@@ -89,59 +66,99 @@ router.get("/shop-data", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Error shop-data:", error);
-    res.status(500).json({
-      error: "Shop data error",
-      details: error.message
-    });
+    res.status(500).json({ error: "Shop data error", details: error.message });
   }
 });
 
 
 
 // -------------------------------------------------------
-// POST /api/optimize-product
+// POST /api/optimize-product (SEO COMPLET)
 // -------------------------------------------------------
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
 
-    if (!productId) {
+    if (!productId)
       return res.status(400).json({ error: "Missing productId" });
-    }
 
     const product = await getProductById(productId);
 
-    if (!product) {
+    if (!product)
       return res.status(404).json({ error: "Product not found" });
-    }
 
-    // TITRE POUR SHOPIFY -> On NE met PAS le ✨
-    const optimizedTitle = product.title;
+    const prompt = `
+Tu es un expert SEO Shopify. Optimise ce produit selon les règles suivantes :
 
-    // DESCRIPTION optimisée simple (à améliorer plus tard)
-    const optimizedDescription = `
-      <h2>${product.title}</h2>
-      ${product.body_html}
-      <p><strong>Description optimisée automatiquement.</strong></p>
+🔹 Ajoute un mot-clé principal (détecté automatiquement).
+🔹 Ajoute le mot-clé principal :
+  - Dans le titre SEO
+  - Dans la meta description
+  - Au début du contenu
+  - Dans plusieurs sous-titres H2 / H3
+🔹 Rédige une description complète ENTRE 600 ET 800 MOTS.
+🔹 Ajoute une image avec alt text contenant le mot-clé principal.
+🔹 Densité du mot-clé ≈ 1%.
+🔹 Génère un slug optimisé < 75 caractères, sans accents.
+🔹 AUCUN lien externe (Wikipedia, Doctolib, etc).
+🔹 Ajoute UN lien interne optimisé (exemple : /collections/moto).
+🔹 Paragraphe d'intro avec mot-clé principal.
+🔹 Paragraphes courts pour lisibilité.
+🔹 N’AJOUTE PAS de texte comme “Description optimisée automatiquement”.
+🔹 Le titre Shopify doit rester propre, SANS emojis et sans “version optimisée”.
+
+Voici les données du produit :
+TITLE : ${product.title}
+DESCRIPTION : ${product.body_html}
+
+Réponds en JSON strict :
+{
+ "keyword": "",
+ "title": "",
+ "slug": "",
+ "meta_title": "",
+ "meta_description": "",
+ "description_html": ""
+}
     `;
+
+    const ai = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4
+    });
+
+    let output = ai.choices[0].message.content.trim();
+    output = JSON.parse(output);
 
     // Mise à jour Shopify
     await updateProduct(productId, {
-      title: optimizedTitle,
-      body_html: optimizedDescription,
-      handle: product.handle
+      title: output.title,
+      body_html: output.description_html,
+      handle: output.slug,
+      metafields: [
+        {
+          key: "meta_title",
+          namespace: "seo",
+          value: output.meta_title,
+          type: "single_line_text_field"
+        },
+        {
+          key: "meta_description",
+          namespace: "seo",
+          value: output.meta_description,
+          type: "multi_line_text_field"
+        }
+      ]
     });
 
-    // Marquer le produit comme optimisé
+    // Marquer comme optimisé
     await markAsOptimized(productId);
 
     res.json({
       success: true,
-      original_title: product.title,
-      preview_title: "✨ Optimisé (prévisualisation WordPress)",
-      optimized_description: optimizedDescription,
-      message: "Produit mis à jour sur Shopify ✔"
+      ...output,
+      message: "Produit optimisé avec succès"
     });
 
   } catch (error) {
@@ -152,5 +169,6 @@ router.post("/optimize-product", async (req, res) => {
     });
   }
 });
+
 
 module.exports = router;
