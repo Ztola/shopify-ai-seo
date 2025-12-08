@@ -2,138 +2,98 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  getProductById,
-  getProductCollection,
-  updateProduct,
-  markAsOptimized,
-  isAlreadyOptimized
+  getAllProducts,
+  getAllCollections,
+  getAllBlogs,
+  getProductsByCollection,
+  getArticlesByBlog,
+  getProductById
 } = require("../services/shopify");
 
-const { optimizeProduct } = require("../services/ai");
-const { getShopCache, refreshShopCache } = require("../services/cache");
-
-// ---------------------------------------------------------
-// 🔥 OPTIMISATION D’UN PRODUIT
-// ---------------------------------------------------------
-router.post("/optimize", async (req, res) => {
+// ------------------------------
+// GET /api/shop-data
+// ------------------------------
+router.get("/shop-data", async (req, res) => {
   try {
-    const { productId, force } = req.body;
+    console.log("📦 Chargement complet de la boutique…");
 
-    if (!productId) {
-      return res.status(400).json({ error: "Missing productId" });
+    const products = await getAllProducts();
+    const collections = await getAllCollections();
+    const blogs = await getAllBlogs();
+
+    let data = {
+      collections: {},
+      blogs: {}
+    };
+
+    for (const col of collections) {
+      const colProducts = await getProductsByCollection(col.id);
+
+      data.collections[col.handle] = {
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
+        products: colProducts.map(p => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle
+        }))
+      };
     }
 
-    const already = await isAlreadyOptimized(productId);
+    for (const blog of blogs) {
+      const articles = await getArticlesByBlog(blog.id);
 
-    if (already && !force) {
-      return res.json({
-        success: false,
-        skipped: true,
-        message:
-          "Produit déjà optimisé. Ajouter { force: true } pour forcer."
-      });
-    }
-
-    // Charger cache Shopify
-    const shopData = await getShopCache();
-
-    const product = await getProductById(productId);
-    const collection = await getProductCollection(productId);
-
-    const optimized = await optimizeProduct(product, collection, {
-      data: shopData
-    });
-
-    await updateProduct(productId, optimized);
-    await markAsOptimized(productId);
-
-    res.json({
-      success: true,
-      optimized
-    });
-
-  } catch (error) {
-    console.error("❌ OPTIMIZE ERROR:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ---------------------------------------------------------
-// ⚡ OPTIMISATION PAR LOT (batch 250)
-// ---------------------------------------------------------
-router.post("/batch-optimize", async (req, res) => {
-  try {
-    const { productIds, force } = req.body;
-
-    if (!Array.isArray(productIds)) {
-      return res.status(400).json({ error: "productIds must be an array" });
-    }
-
-    const shopData = await getShopCache();
-    const results = [];
-
-    const chunk = (arr, size = 250) =>
-      arr.reduce((acc, _, i) => (i % size ? acc : [...acc, arr.slice(i, i + size)]), []);
-
-    const batches = chunk(productIds);
-
-    for (const batch of batches) {
-      for (const productId of batch) {
-        try {
-          const already = await isAlreadyOptimized(productId);
-
-          if (already && !force) {
-            results.push({ productId, status: "skipped" });
-            continue;
-          }
-
-          const product = await getProductById(productId);
-          const collection = await getProductCollection(productId);
-
-          const optimized = await optimizeProduct(product, collection, {
-            data: shopData
-          });
-
-          await updateProduct(productId, optimized);
-          await markAsOptimized(productId);
-
-          results.push({ productId, status: "optimized" });
-
-        } catch (err) {
-          results.push({ productId, status: "error", details: err.message });
-        }
-      }
-
-      await new Promise((r) => setTimeout(r, 300));
+      data.blogs[blog.handle] = {
+        id: blog.id,
+        title: blog.title,
+        handle: blog.handle,
+        articles: articles.map(a => ({
+          id: a.id,
+          title: a.title,
+          handle: a.handle
+        }))
+      };
     }
 
     res.json({
       success: true,
-      results
-    });
-
-  } catch (error) {
-    console.error("❌ BATCH ERROR:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ---------------------------------------------------------
-// 🔄 RAFRAÎCHIR LE CACHE
-// ---------------------------------------------------------
-router.get("/cache-refresh", async (req, res) => {
-  try {
-    const data = await refreshShopCache();
-
-    res.json({
-      success: true,
-      message: "Cache Shopify mis à jour !",
+      total_products: products.length,
+      total_collections: collections.length,
+      total_blogs: blogs.length,
       data
     });
 
   } catch (error) {
-    console.error("❌ CACHE ERROR:", error);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Error shop-data:", error);
+    res.status(500).json({ error: "Shop data error", details: error.message });
+  }
+});
+
+// ---------------------------------------
+// POST /api/optimize-product
+// ---------------------------------------
+router.post("/optimize-product", async (req, res) => {
+  try {
+    const { productId } = req.body;
+
+    if (!productId)
+      return res.status(400).json({ error: "Missing productId" });
+
+    const product = await getProductById(productId);
+
+    if (!product)
+      return res.status(404).json({ error: "Product not found" });
+
+    res.json({
+      success: true,
+      original_title: product.title,
+      optimized_title: "✨ Optimized: " + product.title
+    });
+
+  } catch (err) {
+    console.error("❌ Error optimize-product:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
