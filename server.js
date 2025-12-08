@@ -1,34 +1,13 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
+dotenv.config();
+
+const seoRoutes = require("./routes/seo");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// ----------------------
-// IMPORT ROUTES
-// ----------------------
-const seoRoutes = require("./routes/seo");
-const shopDataRoutes = require("./routes/shop-data");
+@@ -13,6 +14,7 @@ app.use(express.json());
 
-// ----------------------
-// MOUNT ROUTES
-// ----------------------
+// ⚠️ IMPORTANT : Monte toutes les routes de SEO sous /api
 app.use("/api", seoRoutes);
-app.use("/api", shopDataRoutes);
 
-// ----------------------
-// ROOT TEST
-// ----------------------
+// Route de test
 app.get("/", (req, res) => {
-  res.send("Shopify AI Booster API — Running ✔");
-});
-
-// ----------------------
-// START SERVER
-// ----------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 API running on port", PORT);
-});
