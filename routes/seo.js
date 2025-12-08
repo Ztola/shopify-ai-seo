@@ -187,4 +187,101 @@ DESCRIPTION: ${product.body_html}
   }
 });
 
+// -------------------------------------------------------
+// POST /api/optimize-batch
+// Optimise plusieurs produits en une seule requête
+// -------------------------------------------------------
+router.post("/optimize-batch", async (req, res) => {
+  try {
+    const { productIds } = req.body;
+
+    if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+      return res.status(400).json({ error: "Missing productIds[]" });
+    }
+
+    const results = [];
+
+    for (const productId of productIds) {
+      try {
+        const product = await getProductById(productId);
+
+        if (!product) {
+          results.push({
+            productId,
+            success: false,
+            error: "Product not found"
+          });
+          continue;
+        }
+
+        // (On réutilise la même optimisation SEO que pour un produit)
+        const prompt = `
+Tu es un expert SEO Shopify spécialisé pour le e-commerce. Optimise entièrement ce produit et renvoie UNIQUEMENT du JSON strict :
+{
+ "keyword": "",
+ "title": "",
+ "slug": "",
+ "meta_title": "",
+ "meta_description": "",
+ "description_html": ""
+}
+Produit :
+TITRE: ${product.title}
+DESCRIPTION: ${product.body_html}
+`;
+
+        const ai = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.4
+        });
+
+        let output = ai.choices[0].message.content
+          .replace(/```json/gi, "")
+          .replace(/```/g, "")
+          .trim();
+
+        let json = JSON.parse(output);
+
+        // Mise à jour Shopify
+        await updateProduct(productId, {
+          id: productId,
+          title: json.title,
+          body_html: json.description_html,
+          handle: json.slug
+        });
+
+        await markAsOptimized(productId);
+
+        results.push({
+          productId,
+          success: true,
+          updated: json
+        });
+
+      } catch (err) {
+        results.push({
+          productId,
+          success: false,
+          error: err.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Batch optimization completed",
+      results
+    });
+
+  } catch (error) {
+    console.error("❌ Batch error:", error);
+    res.status(500).json({
+      error: "Batch optimize error",
+      details: error.message
+    });
+  }
+});
+
+
 module.exports = router;
