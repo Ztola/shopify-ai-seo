@@ -5,6 +5,7 @@ const cors = require("cors");
 dotenv.config();
 
 const seoRoutes = require("./routes/seo");
+const shopDataRoutes = require("./routes/shop-data");
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 
 // ⚠️ IMPORTANT : Monte toutes les routes de SEO sous /api
 app.use("/api", seoRoutes);
+app.use("/api", shopDataRoutes);
 
 // Route de test
 app.get("/", (req, res) => {
