@@ -7,14 +7,77 @@ const openai = new OpenAI({
 });
 
 const {
+  getAllProducts,
+  getAllCollections,
+  getAllBlogs,
+  getProductsByCollection,
+  getArticlesByBlog,
   getProductById,
   updateProduct,
   markAsOptimized
 } = require("../services/shopify");
 
-// -------------------------------------------------------
-// POST /api/optimize-product (SEO COMPLET FINAL)
-// -------------------------------------------------------
+
+// =======================================================
+// GET /api/shop-data  → WordPress utilise cette route !
+// =======================================================
+router.get("/shop-data", async (req, res) => {
+  try {
+    const products = await getAllProducts();
+    const collections = await getAllCollections();
+    const blogs = await getAllBlogs();
+
+    let data = { collections: {}, blogs: {} };
+
+    for (const col of collections) {
+      const colProducts = await getProductsByCollection(col.id);
+      data.collections[col.handle] = {
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
+        products: colProducts.map(p => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle
+        }))
+      };
+    }
+
+    for (const blog of blogs) {
+      const articles = await getArticlesByBlog(blog.id);
+      data.blogs[blog.handle] = {
+        id: blog.id,
+        title: blog.title,
+        handle: blog.handle,
+        articles: articles.map(a => ({
+          id: a.id,
+          title: a.title,
+          handle: a.handle
+        }))
+      };
+    }
+
+    res.json({
+      success: true,
+      total_products: products.length,
+      total_collections: collections.length,
+      total_blogs: blogs.length,
+      data
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: "Shop data error",
+      details: error.message
+    });
+  }
+});
+
+
+
+// =======================================================
+// POST /api/optimize-product → SEO COMPLET AVEC TON PROMPT
+// =======================================================
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
@@ -28,7 +91,7 @@ router.post("/optimize-product", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
 
     // ---------------------------
-    // PROMPT SEO ULTRA COMPLET
+    // PROMPT SEO EXACT (TA VERSION)
     // ---------------------------
     const prompt = `
 Tu es un expert SEO Shopify spécialisé pour le e-commerce. Tu dois créer une optimisation complète du produit, selon les règles ci-dessous. Tu dois renvoyer UNIQUEMENT du JSON valide, sans markdown, sans \`\`\`, et sans texte autour.
@@ -71,29 +134,24 @@ TITRE: ${product.title}
 DESCRIPTION: ${product.body_html}
 `;
 
-    // ---------------------------
-    // APPEL IA
-    // ---------------------------
+    // IA CALL
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.4
     });
 
-    // Réponse brute IA
     let output = ai.choices[0].message.content.trim();
 
-    // Nettoyage anti-erreur JSON
+    // Nettoyage JSON
     output = output.replace(/```json/gi, "");
     output = output.replace(/```/g, "");
-    output = output.replace(/^\s+|\s+$/g, "");
+    output = output.trim();
 
     let json;
-
     try {
       json = JSON.parse(output);
     } catch (err) {
-      console.error("❌ JSON reçu non valide :", output);
       return res.status(500).json({
         error: "Invalid JSON from AI",
         details: err.message,
@@ -101,9 +159,7 @@ DESCRIPTION: ${product.body_html}
       });
     }
 
-    // ---------------------------
     // MISE À JOUR SHOPIFY
-    // ---------------------------
     await updateProduct(productId, {
       id: productId,
       title: json.title,
@@ -113,9 +169,6 @@ DESCRIPTION: ${product.body_html}
 
     await markAsOptimized(productId);
 
-    // ---------------------------
-    // RÉPONSE
-    // ---------------------------
     res.json({
       success: true,
       productId,
@@ -124,12 +177,12 @@ DESCRIPTION: ${product.body_html}
     });
 
   } catch (error) {
-    console.error("❌ Error optimize-product:", error);
     res.status(500).json({
       error: "Optimize error",
       details: error.message
     });
   }
 });
+
 
 module.exports = router;
