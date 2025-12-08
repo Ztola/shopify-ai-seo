@@ -1,16 +1,16 @@
 {
   "name": "shopify-ai-seo",
   "version": "1.0.0",
+  "description": "Shopify AI SEO Assistant",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "axios": "^1.6.8",
+    "axios": "^1.6.7",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2"
+    "dotenv": "^16.4.0",
+    "express": "^4.18.2",
     "openai": "^4.52.0"
   }
 }
