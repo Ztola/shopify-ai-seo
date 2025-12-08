@@ -1,3 +1,17 @@
+const express = require("express");
+const router = express.Router();
+
+const { getShopCache, refreshShopCache } = require("../services/cache");
+
+// IMPORTANT : importer toutes les fonctions utilisées
+const {
+  getAllProducts,
+  getAllCollections,
+  getAllBlogs,
+  getProductsByCollection,
+  getArticlesByBlog
+} = require("../services/shopify");
+
 router.get("/shop-data", async (req, res) => {
   try {
     console.log("📦 Scraping complet de la boutique…");
@@ -66,3 +80,5 @@ router.get("/shop-data", async (req, res) => {
     });
   }
 });
+
+module.exports = router;
