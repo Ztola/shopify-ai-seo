@@ -175,4 +175,60 @@ DESCRIPTION ORIGINALE : ${product.body_html}
   }
 });
 
+/* ---------------------------------------------------------------------
+   🔥 ROUTE 3 : POST /optimize-collection
+   Optimise tous les produits d'une collection
+--------------------------------------------------------------------- */
+router.post("/optimize-collection", async (req, res) => {
+  try {
+    const { collectionId } = req.body;
+
+    if (!collectionId) {
+      return res.status(400).json({ error: "Missing collectionId" });
+    }
+
+    // Récupérer les produits de la collection
+    const products = await getProductsByCollection(collectionId);
+
+    if (!products || products.length === 0) {
+      return res.status(404).json({ error: "No products found in this collection" });
+    }
+
+    const results = [];
+
+    // Boucle sur chaque produit
+    for (const product of products) {
+      try {
+        const optimizeRes = await fetch(
+          `${process.env.SERVER_URL}/api/optimize-product`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ productId: product.id })
+          }
+        );
+
+        const data = await optimizeRes.json();
+        results.push({ id: product.id, title: product.title, success: true, data });
+
+      } catch (err) {
+        results.push({ id: product.id, title: product.title, success: false, error: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      optimized: results.length,
+      results
+    });
+
+  } catch (error) {
+    console.error("❌ Error /optimize-collection", error);
+    res.status(500).json({
+      error: "Optimize collection error",
+      details: error.message
+    });
+  }
+});
+
 module.exports = router;
