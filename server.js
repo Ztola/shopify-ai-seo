@@ -6,22 +6,21 @@ dotenv.config();
 
 const app = express();
 
-// Middlewares
 app.use(cors());
 app.use(express.json());
 
-// IMPORT DES ROUTES SEO
+// 🔥 Import des routes SEO
 const seoRoutes = require("./routes/seo");
 
-// ROUTES API
+// Toutes les routes API commencent ici
 app.use("/api", seoRoutes);
 
-// ROUTE TEST
+// Route test
 app.get("/", (req, res) => {
-  res.send("🔥 Shopify AI SEO App is running on Render!");
+  res.send("🔥 Shopify AI SEO Server is running!");
 });
 
-// Render attribue automatiquement PORT
+// PORT Render obligatoire
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
