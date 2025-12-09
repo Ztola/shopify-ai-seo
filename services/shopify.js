@@ -18,6 +18,28 @@ const shopify = axios.create({
 });
 
 // ------------------------------------------------------
+// AUTO RATE LIMITER Shopify (évite erreur 429)
+// ------------------------------------------------------
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+let lastCall = 0;
+const MIN_DELAY = 500; // 2 requêtes par seconde
+
+shopify.interceptors.request.use(async config => {
+  const now = Date.now();
+  const timeSinceLastCall = now - lastCall;
+
+  if (timeSinceLastCall < MIN_DELAY) {
+    await wait(MIN_DELAY - timeSinceLastCall);
+  }
+
+  lastCall = Date.now();
+  return config;
+});
+
+// ------------------------------------------------------
 // Récupérer un produit
 // ------------------------------------------------------
 async function getProductById(id) {
@@ -56,7 +78,7 @@ async function updateProduct(id, data) {
 }
 
 // ------------------------------------------------------
-// Marquer un produit comme optimisé par l’IA
+// Marquer un produit comme optimisé
 // ------------------------------------------------------
 async function markAsOptimized(productId) {
   await shopify.post(`/metafields.json`, {
@@ -72,7 +94,7 @@ async function markAsOptimized(productId) {
 }
 
 // ------------------------------------------------------
-// Vérifier si déjà optimisé (évite double traitement)
+// Vérifier si déjà optimisé
 // ------------------------------------------------------
 async function isAlreadyOptimized(productId) {
   const res = await shopify.get(`/products/${productId}/metafields.json`);
@@ -86,7 +108,7 @@ async function isAlreadyOptimized(productId) {
 }
 
 // ------------------------------------------------------
-// Récupérer toutes les collections (custom & smart)
+// Récupérer toutes les collections
 // ------------------------------------------------------
 async function getAllCollections() {
   const custom = await shopify.get(`/custom_collections.json?limit=250`);
@@ -99,7 +121,7 @@ async function getAllCollections() {
 }
 
 // ------------------------------------------------------
-// Récupérer tous les produits (pagination automatique)
+// Récupérer tous les produits (pagination)
 // ------------------------------------------------------
 async function getAllProducts() {
   let products = [];
@@ -107,7 +129,6 @@ async function getAllProducts() {
 
   while (url) {
     const res = await shopify.get(url);
-
     products = products.concat(res.data.products);
 
     const linkHeader = res.headers["link"];
@@ -117,7 +138,7 @@ async function getAllProducts() {
         .split(",")
         .find((s) => s.includes('rel="next"'))
         .match(/<(.+?)>/)[1]
-        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, ""); // FIX UNIVERSAL
+        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
       url = nextUrl;
     } else {
       url = null;
@@ -146,7 +167,7 @@ async function getAllBlogs() {
 }
 
 // ------------------------------------------------------
-// Récupérer tous les articles d’un blog (pagination auto)
+// Articles d’un blog
 // ------------------------------------------------------
 async function getArticlesByBlog(blogId) {
   let articles = [];
@@ -154,17 +175,15 @@ async function getArticlesByBlog(blogId) {
 
   while (url) {
     const res = await shopify.get(url);
-
     articles = articles.concat(res.data.articles);
 
     const linkHeader = res.headers["link"];
-
     if (linkHeader && linkHeader.includes('rel="next"')) {
       const nextUrl = linkHeader
         .split(",")
         .find((s) => s.includes('rel="next"'))
         .match(/<(.+?)>/)[1]
-        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, ""); // FIX UNIVERSAL
+        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
       url = nextUrl;
     } else {
       url = null;
@@ -183,11 +202,9 @@ module.exports = {
   updateProduct,
   markAsOptimized,
   isAlreadyOptimized,
-
   getAllProducts,
   getAllCollections,
   getProductsByCollection,
-
   getAllBlogs,
   getArticlesByBlog
 };
