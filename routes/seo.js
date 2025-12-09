@@ -1,8 +1,8 @@
-const express = require(express);
+const express = require("express");
 const router = express.Router();
-const { OpenAI } = require(openai);
+const { OpenAI } = require("openai");
 
- Shopify services
+// Shopify Services
 const {
   getAllProducts,
   getAllCollections,
@@ -10,91 +10,87 @@ const {
   getProductById,
   updateProduct,
   markAsOptimized
-} = require(..servicesshopify);
+} = require("../services/shopify");
 
+// OpenAI Client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
- ---------------------------------------------------------------------
- 🔥 ROUTE 1  GET apishop-data
- ---------------------------------------------------------------------
-router.get(shop-data, async (req, res) = {
+/* ---------------------------------------------------------------------
+   🔥 ROUTE 1 : GET /shop-data
+--------------------------------------------------------------------- */
+router.get("/shop-data", async (req, res) => {
   try {
     const collections = await getAllCollections();
 
-    if (!collections  collections.length === 0) {
-      return res.status(500).json({ error No collections found });
+    if (!collections || collections.length === 0) {
+      return res.status(500).json({ error: "No collections found" });
     }
 
-    const data = { collections {} };
-
-     🔥 Charger TOUS les produits (utile pour compter)
+    const data = { collections: {} };
     const allProducts = await getAllProducts();
 
-     Pour chaque collection → récupérer les produits réels
     for (const col of collections) {
       const colId = col.id;
       const colHandle = col.handle;
       const colTitle = col.title;
 
-       Shopify API  obtenir les produits d'une collection
       const products = await getProductsByCollection(colId);
 
       data.collections[colHandle] = {
-        id colId,
-        title colTitle,
-        handle colHandle,
-        products products.map(p = ({
-          id p.id,
-          title p.title,
-          handle p.handle,
-          optimized p.tags.includes(optimized)  false
+        id: colId,
+        title: colTitle,
+        handle: colHandle,
+        products: products.map((p) => ({
+          id: p.id,
+          title: p.title,
+          handle: p.handle,
+          optimized: p.tags.includes("optimized") ? true : false
         }))
       };
     }
 
     res.json({
-      success true,
-      total_products allProducts.length,
-      total_collections collections.length,
+      success: true,
+      total_products: allProducts.length,
+      total_collections: collections.length,
       data
     });
 
   } catch (error) {
-    console.error(❌ Error shop-data, error);
+    console.error("❌ Error /shop-data", error);
     res.status(500).json({
-      error Shop data error,
-      details error.message
+      error: "Shop data error",
+      details: error.message
     });
   }
 });
 
-
- ---------------------------------------------------------------------
- 🔥 ROUTE 2  POST apioptimize-product
- ---------------------------------------------------------------------
-const openai = new OpenAI({
-  apiKey process.env.OPENAI_API_KEY
-});
-
-
-router.post(optimize-product, async (req, res) = {
+/* ---------------------------------------------------------------------
+   🔥 ROUTE 2 : POST /optimize-product
+--------------------------------------------------------------------- */
+router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
 
     if (!productId) {
-      return res.status(400).json({ error Missing productId });
+      return res.status(400).json({ error: "Missing productId" });
     }
 
     const product = await getProductById(productId);
 
     if (!product) {
-      return res.status(404).json({ error Product not found });
+      return res.status(404).json({ error: "Product not found" });
     }
 
-     PROMPT SEO
+    // ----------------------------------------------------------------
+    // 🔥 TON PROMPT ORIGINAL ENTIER EST ICI
+    // ----------------------------------------------------------------
     const prompt = `
 Tu es un expert SEO Shopify. Fournis une optimisation complète STRICTEMENT en JSON valide.
 
-Règles SEO obligatoires 
+Règles SEO obligatoires :
 1. Ajouter le mot-clé principal au début du titre SEO.
 2. Ajouter le mot-clé principal dans la méta description.
 3. Utiliser le mot-clé principal dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
@@ -114,75 +110,67 @@ Règles SEO obligatoires
 17. Ne jamais écrire “version optimisée” ou similaire.
 18. Description orientée conversion.
 
-Renvoie uniquement ce JSON strict 
-
+Renvoie uniquement ce JSON strict :
 {
- keyword ,
- title ,
- slug ,
- meta_title ,
- meta_description ,
- description_html 
+  "keyword": "",
+  "title": "",
+  "slug": "",
+  "meta_title": "",
+  "meta_description": "",
+  "description_html": ""
 }
 
-Données du produit 
-
-TITRE ${product.title}
-DESCRIPTION ${product.body_html}
+Données du produit :
+TITRE : ${product.title}
+DESCRIPTION ORIGINALE : ${product.body_html}
 `;
 
-     ------------------------------
-     IA CALL
-     ------------------------------
+    // Appel OpenAI
     const ai = await openai.chat.completions.create({
-      model gpt-4o-mini,
-      messages [{ role user, content prompt }],
-      temperature 0.4
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.4
     });
 
     let output = ai.choices[0].message.content.trim();
 
-     Nettoyage JSON
-    output = output.replace(```jsongi, );
-    output = output.replace(```g, );
-    output = output.trim();
+    // Nettoyage JSON
+    output = output.replace(/```json/g, "");
+    output = output.replace(/```/g, "").trim();
 
     let json;
-
     try {
       json = JSON.parse(output);
     } catch (err) {
-      console.error(❌ Invalid JSON from AI, output);
+      console.error("❌ Invalid JSON from AI", output);
       return res.status(500).json({
-        error Invalid JSON from AI,
-        details err.message,
-        raw output
+        error: "Invalid JSON from AI",
+        details: err.message,
+        raw: output
       });
     }
 
-     ------------------------------
-     MISE À JOUR DU PRODUIT SHOPIFY
-     ------------------------------
+    // Mise à jour Shopify
     await updateProduct(productId, {
-      id productId,
-      title json.title,
-      handle json.slug,
-      body_html json.description_html
+      id: productId,
+      title: json.title,
+      handle: json.slug,
+      body_html: json.description_html
     });
 
     await markAsOptimized(productId);
 
     res.json({
-      success true,
-      message Produit optimisé avec succès,
+      success: true,
+      message: "Produit optimisé avec succès",
       ...json
     });
 
   } catch (error) {
-    console.error(❌ Error optimize-product, error);
+    console.error("❌ Error /optimize-product", error);
     res.status(500).json({
-      error Optimize error,
-      details error.message
+      error: "Optimize error",
+      details: error.message
     });
   }
 });
