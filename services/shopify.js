@@ -221,6 +221,16 @@ async function getArticlesByBlog(blogId) {
 }
 
 // ------------------------------------------------------
+// 🔥 Créer un article de blog Shopify
+// ------------------------------------------------------
+async function createBlogArticle(blogId, article) {
+  const res = await shopify.post(`/blogs/${blogId}/articles.json`, {
+    article
+  });
+  return res.data.article;
+}
+
+// ------------------------------------------------------
 // EXPORTS
 // ------------------------------------------------------
 module.exports = {
@@ -234,4 +244,5 @@ module.exports = {
   getProductsByCollection,
   getAllBlogs,
   getArticlesByBlog
+  createBlogArticle
 };
