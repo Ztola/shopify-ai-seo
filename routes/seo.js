@@ -135,9 +135,12 @@ Ajoute un lien interne obligatoire vers une collection recommandée.
 </p>
 
 <p>
-Inclure également deux liens externes fiables comme :
+Inclure également 1 lien externes fiables comme :
 – Ameli (santé)
 – Inserm / Wikipédia (source scientifique)
+- Futura-Science
+❗ RÈGLE IMPORTANTE : Le maillage externe doit traiter EXACTEMENT du sujet lié au mot-clé principal ou à la collection (ex. douleurs plantaires, marche, fasciite plantaire, soutien orthopédique, semelles, biomécanique…).  
+N'inclure AUCUN lien externe qui n’est pas en rapport direct avec le thème.
 </p>
 
 <p>
