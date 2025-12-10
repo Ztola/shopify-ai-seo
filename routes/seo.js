@@ -1,10 +1,32 @@
-// Extraire automatiquement le nom de la boutique Shopify
+// 🧠 Extraire automatiquement un nom de marque lisible depuis l'URL Shopify
 function getDynamicBrandName() {
-    if (!process.env.SHOPIFY_SHOP_URL) return "VotreBoutique";
+    try {
+        let url = process.env.SHOPIFY_SHOP_URL;
 
-    // Exemple : aykenwear.myshopify.com → "AYKENWEAR"
-    let domain = process.env.SHOPIFY_SHOP_URL.split(".")[0];
-    return domain.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+        if (!url || typeof url !== "string") return "Votre Boutique";
+
+        // 1. Retirer tout après le premier point → myshopify.com, .fr, .com...
+        let base = url.split(".")[0];
+
+        // 2. Nettoyer tout caractère inutile
+        base = base.replace(/[^a-zA-Z0-9\-]/g, "");
+
+        // 3. Convertir les tirets en espaces → confort-orthopedique → confort orthopedique
+        base = base.replace(/-/g, " ");
+
+        // 4. Capitaliser chaque mot → confort orthopedique → Confort Orthopedique
+        base = base
+            .split(" ")
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ");
+
+        // Sécurité au cas où
+        if (!base || base.length < 2) return "Votre Boutique";
+
+        return base;
+    } catch (err) {
+        return "Votre Boutique";
+    }
 }
 
 const express = require("express");
