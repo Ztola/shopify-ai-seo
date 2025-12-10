@@ -83,18 +83,26 @@ router.post("/optimize-product", async (req, res) => {
 
     // 🔥 Prompt IA
     const prompt = `
-Tu es un expert SEO Shopify. Fournis une optimisation complète STRICTEMENT en JSON valide.
+Tu es un expert SEO Shopify. Tu dois optimiser le produit en te basant
+SUR SA DESCRIPTION ACTUELLE, que tu dois absolument reformuler intégralement.
 
-Règles SEO obligatoires Toujous reformuler la description du produit actuel:
+IMPORTANT :
+- Toute description doit être réécrite (pas copiée, pas paraphrasée légèrement, mais reformulée entièrement).
+- Si la description contient déjà des liens, tu dois les remplacer par :
+    • soit du maillage interne (vers un autre produit ou collection),
+    • soit du maillage externe pertinent (Wikipedia, Ameli, Doctolib…).
+- Si la description contient des noms de marques existantes, tu dois les remplacer par le nom du site Shopify actuel : ${process.env.SHOPIFY_BRAND_NAME}.
+
+Règles SEO obligatoires :
 1. Ajouter le mot-clé principal au début du titre SEO.
-2. Ajouter le mot-clé principal dans la méta description.
-3. Utiliser le mot-clé principal dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
-4. Utiliser le mot-clé principal au début du contenu.
-5. Utiliser le mot-clé principal dans tout le contenu.
-6. Produire une description HTML riche de 600 à 800 mots.
-7. Inclure un H2 contenant le mot-clé principal.
-8. Inclure plusieurs H3 contenant le mot-clé principal.
-9. Ajouter 1 lien sortant pertinent (Wikipedia, Ameli, Doctolib, etc...).
+2. Ajouter ce mot-clé dans la méta description.
+3. Utiliser ce mot-clé dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
+4. Utiliser ce mot-clé au début du contenu.
+5. Utiliser ce mot-clé dans tout le contenu.
+6. Rédiger une description HTML riche de 600 à 800 mots (pas plus).
+7. Inclure un <h2> contenant le mot-clé principal.
+8. Inclure plusieurs <h3> contenant le mot-clé principal.
+9. Ajouter 1 lien sortant pertinent (Wikipedia, Ameli, Doctolib…).
 10. Viser environ 1% de densité du mot-clé sans bourrage.
 11. Ajouter 1 ou 2 liens internes vers un produit.
 12. Ajouter 1 ou 2 liens internes vers une collection.
@@ -104,8 +112,11 @@ Règles SEO obligatoires Toujous reformuler la description du produit actuel:
 16. AUCUN emoji, AUCUN markdown.
 17. Ne jamais écrire “version optimisée” ou similaire.
 18. Description orientée conversion.
+19. Reformuler absolument toute la description existante en supprimant toute répétition et toute ancienne marque.
+20. La meta description doit faire MAXIMUM 160 caractères.
+21. Le meta title doit faire MAXIMUM 70 caractères.
 
-Renvoie uniquement ce JSON :
+Renvoie STRICTEMENT ce JSON :
 {
   "keyword": "",
   "title": "",
@@ -115,8 +126,9 @@ Renvoie uniquement ce JSON :
   "description_html": ""
 }
 
-TITRE : ${product.title}
-DESCRIPTION : ${product.body_html}
+Données du produit :
+TITRE ACTUEL : ${product.title}
+DESCRIPTION ACTUELLE : ${product.body_html}
 `;
 
     // 🔥 Appel IA
