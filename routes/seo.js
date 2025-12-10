@@ -85,15 +85,25 @@ router.post("/optimize-product", async (req, res) => {
     const prompt = `
 Tu es un expert SEO Shopify. Fournis une optimisation complète STRICTEMENT en JSON valide.
 
-Règles SEO :
-1. Mot-clé principal au début du titre SEO
-2. Mot-clé dans la méta description
-3. URL (slug) courte, sans accents, sans majuscules
-4. Description HTML riche de 600 à 800 mots
-5. H2 + H3 contenant le mot-clé
-6. Aucun emoji
-7. Description orientée conversion
-8. Jamais écrire "version optimisée"
+Règles SEO obligatoires Toujous reformuler la description du produit actuel:
+1. Ajouter le mot-clé principal au début du titre SEO.
+2. Ajouter le mot-clé principal dans la méta description.
+3. Utiliser le mot-clé principal dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
+4. Utiliser le mot-clé principal au début du contenu.
+5. Utiliser le mot-clé principal dans tout le contenu.
+6. Produire une description HTML riche de 600 à 800 mots.
+7. Inclure un H2 contenant le mot-clé principal.
+8. Inclure plusieurs H3 contenant le mot-clé principal.
+9. Ajouter 1 lien sortant pertinent (Wikipedia, Ameli, Doctolib, etc...).
+10. Viser environ 1% de densité du mot-clé sans bourrage.
+11. Ajouter 1 ou 2 liens internes vers un produit.
+12. Ajouter 1 ou 2 liens internes vers une collection.
+13. Définir un mot-clé principal pertinent.
+14. Le titre doit contenir un power word.
+15. Paragraphes lisibles, ton humain.
+16. AUCUN emoji, AUCUN markdown.
+17. Ne jamais écrire “version optimisée” ou similaire.
+18. Description orientée conversion.
 
 Renvoie uniquement ce JSON :
 {
