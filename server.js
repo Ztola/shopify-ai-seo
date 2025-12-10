@@ -12,8 +12,14 @@ app.use(express.json());
 // 🔥 Import des routes SEO
 const seoRoutes = require("./routes/seo");
 
+// 🔥 Import des routes Blog (NOUVEAU)
+const blogRoutes = require("./routes/blogs");
+
 // Toutes les routes API commencent ici
 app.use("/api", seoRoutes);
+
+// 👉 Ajout des routes Blog
+app.use("/api", blogRoutes);
 
 // Route test
 app.get("/", (req, res) => {
