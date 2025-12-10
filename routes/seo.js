@@ -92,25 +92,65 @@ router.post("/optimize-product", async (req, res) => {
 
     // 🔥 Prompt IA
     const prompt = `
-En tant que rédacteur de descriptions de produits pour un site e-commerce, votre tâche consiste à créer des descriptions détaillées et persuasives qui incitent les clients potentiels à acheter le produit. Vos descriptions doivent être précises, informatives et convaincantes, en mettant en avant les caractéristiques clés du produit ainsi que ses avantages par rapport aux autres produits similaires sur le marché. Veuillez vous assurer que vos descriptions sont adaptées au public cible du site e-commerce et qu'elles reflètent l'image de marque de l'entreprise. Vous devriez également inclure des mots-clés pertinents dans vos descriptions pour améliorer la visibilité du produit dans les résultats de recherche. Enfin, veuillez respecter les normes éthiques lors de la rédaction des descriptions de produits, en évitant toute fausse information ou exagération. 
+Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
 
-IMPORTANT :
-- Toute description doit être réécrite (pas copiée, pas paraphrasée légèrement, mais reformulée entièrement).
-- Si la description contient déjà des liens, tu dois les remplacer par :
-    • soit du maillage interne (vers un autre produit ou collection),
-    • soit du maillage externe pertinent (Wikipedia, Ameli, Doctolib ou d'autres source).
-- Si la description contient des noms de marques existantes, tu dois les remplacer par le nom du site Shopify actuel : ${process.env.SHOPIFY_BRAND_NAME}.
+Ta mission : générer une description HTML complète au même style, même structure et même logique que l’exemple suivant, mais totalement adaptée au produit donné :
 
-Rédige une description produit en HTML en respectant exactement la structure suivante :
+=== EXEMPLE DE STYLE À REPRODUIRE ===
 
-<div class="product__description rte quick-add-hidden"> <h2>[Titre principal du produit avec son nom ou son modèle]</h2> <p>Rédige un paragraphe d’introduction présentant brièvement la gamme, puis ajoute un lien interne cliquable vers une collection ou un produit, sous la forme d’un ancrage texte.</p> <h3>[Sous-titre accrocheur mentionnant le nom du produit et sa promesse principale]</h3> <ul> <li>[Premier avantage clé du produit]</li> <li>[Deuxième avantage clé du produit]</li> </ul> <p>Rédige un premier paragraphe expliquant en détail les bénéfices du produit, ses effets, son confort ou son utilité.</p> <p>Rédige un deuxième paragraphe décrivant la clientèle idéale, les matériaux, la qualité, la durabilité ou le design.</p> <p>Rédige un paragraphe final motivant l’achat, en insistant sur le confort, la praticité ou la transformation apportée. Termine par une phrase d’incitation à tester le produit.</p> </div>
+<h2><strong>{{PRODUCT_NAME}}™</strong> | <strong>{{CATEGORY_NAME}}</strong> : Confort supérieur et maintien avancé</h2>
+
+<p>
+Introduction présentant le bénéfice principal, incluant deux liens internes :
+– Un lien vers une collection liée.
+– Un lien vers une autre collection ou catégorie.
+Description centrée sur le confort, le soutien, l'élégance et l’usage quotidien.
+</p>
+
+<h3>Redécouvrez le confort et la stabilité avec les <strong>{{PRODUCT_NAME}}™</strong></h3>
+
+<ul>
+    <li><strong>Bénéfice 1</strong> : Explication claire.</li>
+    <li><strong>Bénéfice 2</strong> : Explication claire.</li>
+    <li><strong>Bénéfice 3</strong> : Explication claire.</li>
+    <li><strong>Bénéfice 4</strong> : Explication claire.</li>
+    <li><strong>Bénéfice 5</strong> : Explication claire.</li>
+    <li><strong>Bénéfice 6</strong> : Explication claire.</li>
+</ul>
+
+<p>
+Deux paragraphes de développement expliquant :
+– La réduction de la douleur.
+– Le confort quotidien.
+– Les usages possibles (ville, travail, marche…).
+– Le soutien ergonomique.
+</p>
+
+<p>
+Ajoute un lien interne obligatoire vers un produit recommandé.
+</p>
+
+<p>
+Ajoute un lien interne obligatoire vers une collection recommandée.
+</p>
+
+<p>
+Inclure également deux liens externes fiables comme :
+– Ameli (santé)
+– Inserm / Wikipédia (source scientifique)
+</p>
+
+<p>
+Conclusion émotionnelle valorisant :
+– Le confort durable
+– La marche sans douleur
+– Le style élégant
+– La nécessité d’acheter dès maintenant
+</p>
 
 Contraintes :
 
 – Ne jamais copier la description d’origine : tout doit être reformulé.
-– Garder la même structure (h2, lien interne sous forme d’ancrage, h3, liste à puces, 3 paragraphes).
-– Ton professionnel, fluide, descriptif et orienté conversion.
-– Aucun emoji, aucun markdown.
 – HTML propre uniquement.
 
 Renvoie STRICTEMENT ce JSON :
