@@ -351,4 +351,109 @@ router.post("/optimize-collection", async (req, res) => {
   }
 });
 
+/* -------------------------------------------------------------
+   🧠 FONCTION IA POUR CRÉER UN ARTICLE DE BLOG AUTOMATIQUE
+-------------------------------------------------------------- */
+async function createBlogArticle({ title, prompt, brand, collectionUrl, productUrl }) {
+
+  const fullPrompt = `
+Tu es un expert SEO Shopify spécialisé en rédaction longue. 
+Génère un article de blog HTML complet, structuré, compatible Shopify, entre 1500 et 2500 mots.
+
+L’article doit contenir :
+
+### STRUCTURE OBLIGATOIRE
+- Un <h1> avec le mot-clé principal
+- Plusieurs <h2> et <h3>
+- Paragraphes lisibles, ton humain, professionnel
+- Bannière produit en HTML au début et à la fin :
+  <img src="${productUrl}" alt="Produit ${brand}">
+- 1 lien interne VERS LA COLLECTION :
+  ${collectionUrl}
+- 1 lien interne VERS LE PRODUIT :
+  ${productUrl}
+- 1 lien externe FIABLE (Wikipédia / Ameli / Inserm / Futura)
+  ❗ Le lien externe doit obligatoirement être en rapport direct avec le sujet du blog.
+
+### RÈGLES IMPORTANTES
+- Ne pas utiliser d'emoji
+- Ne JAMAIS mentionner que c'est généré par IA
+- Ne JAMAIS écrire "version optimisée"
+- Reformuler totalement, zéro duplication
+- Utiliser le nom de la boutique : ${brand}
+
+### CONTENU À RESPECTER
+Sujet de l'article :
+${prompt}
+
+Titre principal demandé :
+${title}
+
+Renvoie UNIQUEMENT ce JSON strict :
+{
+  "title": "",
+  "html": ""
+}
+`;
+
+  const ai = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.5,
+    messages: [{ role: "user", content: fullPrompt }]
+  });
+
+  let raw = ai.choices[0].message.content.trim();
+  raw = raw.replace(/```json/g, "").replace(/```/g, "");
+
+  return JSON.parse(raw);
+}
+
+
+/* -------------------------------------------------------------
+   🔥 ROUTE : CRÉER UN ARTICLE DE BLOG AUTOMATIQUE
+-------------------------------------------------------------- */
+router.post("/create-blog", async (req, res) => {
+  try {
+
+    const { title, prompt, collectionHandle, productHandle } = req.body;
+
+    if (!title || !prompt) {
+      return res.status(400).json({ error: "Missing title or prompt" });
+    }
+
+    const brand = getDynamicBrandName();
+
+    const BASE = `https://${process.env.SHOPIFY_SHOP_URL}`;
+
+    const collectionUrl = collectionHandle 
+      ? `${BASE}/collections/${collectionHandle}`
+      : null;
+
+    const productUrl = productHandle
+      ? `${BASE}/products/${productHandle}`
+      : null;
+
+    const article = await createBlogArticle({
+      title,
+      prompt,
+      brand,
+      collectionUrl,
+      productUrl
+    });
+
+    res.json({
+      success: true,
+      blog: article
+    });
+
+  } catch (err) {
+    console.error("❌ BLOG ERROR", err);
+    res.status(500).json({
+      error: "Blog creation failed",
+      details: err.message
+    });
+  }
+});
+
+
 module.exports = router;
