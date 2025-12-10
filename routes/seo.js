@@ -1,3 +1,12 @@
+// Extraire automatiquement le nom de la boutique Shopify
+function getDynamicBrandName() {
+    if (!process.env.SHOPIFY_SHOP_URL) return "VotreBoutique";
+
+    // Exemple : aykenwear.myshopify.com → "AYKENWEAR"
+    let domain = process.env.SHOPIFY_SHOP_URL.split(".")[0];
+    return domain.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
 const express = require("express");
 const router = express.Router();
 const { OpenAI } = require("openai");
