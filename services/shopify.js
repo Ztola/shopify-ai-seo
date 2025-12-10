@@ -1,13 +1,15 @@
 const axios = require("axios");
 
-// Debug URL au démarrage
+// ------------------------------------------------------
+// DEBUG URL AU DÉMARRAGE
+// ------------------------------------------------------
 console.log(
   "🔍 Testing Shopify URL:",
   `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products.json`
 );
 
 // ------------------------------------------------------
-// Instance Shopify
+// INSTANCE SHOPIFY
 // ------------------------------------------------------
 const shopify = axios.create({
   baseURL: `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
@@ -25,7 +27,7 @@ function wait(ms) {
 }
 
 let lastCall = 0;
-const MIN_DELAY = 500; // 2 requêtes par seconde
+const MIN_DELAY = 500; // 2 requêtes par seconde max
 
 shopify.interceptors.request.use(async config => {
   const now = Date.now();
@@ -40,7 +42,7 @@ shopify.interceptors.request.use(async config => {
 });
 
 // ------------------------------------------------------
-// Récupérer un produit
+// 🔥 RÉCUPÉRER UN PRODUIT
 // ------------------------------------------------------
 async function getProductById(id) {
   const res = await shopify.get(`/products/${id}.json`);
@@ -48,7 +50,7 @@ async function getProductById(id) {
 }
 
 // ------------------------------------------------------
-// Récupérer la collection principale d’un produit
+// 🔥 RÉCUPÉRER COLLECTION D’UN PRODUIT
 // ------------------------------------------------------
 async function getProductCollection(productId) {
   const collects = await shopify.get(`/collects.json?product_id=${productId}`);
@@ -64,7 +66,7 @@ async function getProductCollection(productId) {
 }
 
 // ------------------------------------------------------
-// Mettre à jour un produit
+// 🔥 METTRE À JOUR UN PRODUIT
 // ------------------------------------------------------
 async function updateProduct(id, data) {
   await shopify.put(`/products/${id}.json`, {
@@ -78,9 +80,32 @@ async function updateProduct(id, data) {
 }
 
 // ------------------------------------------------------
-// Marquer un produit comme optimisé
+// 🔥 MARQUER UN PRODUIT COMME OPTIMISÉ (TAG + METAFIELD)
 // ------------------------------------------------------
 async function markAsOptimized(productId) {
+  console.log("🔖 Marquage du produit comme optimisé…");
+
+  // 1️⃣ Récupérer le produit
+  const res = await shopify.get(`/products/${productId}.json`);
+  const product = res.data.product;
+
+  let currentTags = product.tags ? product.tags.split(",") : [];
+
+  // 2️⃣ Ajouter le tag s'il n’existe pas
+  const cleanTags = currentTags.map(t => t.trim());
+  if (!cleanTags.includes("optimized")) {
+    cleanTags.push("optimized");
+  }
+
+  // 3️⃣ Mise à jour du produit avec nouveau tag
+  await shopify.put(`/products/${productId}.json`, {
+    product: {
+      id: productId,
+      tags: cleanTags.join(", ")
+    }
+  });
+
+  // 4️⃣ Ajouter aussi le Metafield (optionnel)
   await shopify.post(`/metafields.json`, {
     metafield: {
       namespace: "ai_seo",
@@ -91,10 +116,12 @@ async function markAsOptimized(productId) {
       owner_id: productId
     }
   });
+
+  console.log("✔ Produit marqué optimisé (Tag + Metafield)");
 }
 
 // ------------------------------------------------------
-// Vérifier si déjà optimisé
+// 🔥 VÉRIFIER SI DÉJÀ OPTIMISÉ
 // ------------------------------------------------------
 async function isAlreadyOptimized(productId) {
   const res = await shopify.get(`/products/${productId}/metafields.json`);
@@ -108,7 +135,7 @@ async function isAlreadyOptimized(productId) {
 }
 
 // ------------------------------------------------------
-// Récupérer toutes les collections
+// 🔥 TOUTES LES COLLECTIONS
 // ------------------------------------------------------
 async function getAllCollections() {
   const custom = await shopify.get(`/custom_collections.json?limit=250`);
@@ -121,7 +148,7 @@ async function getAllCollections() {
 }
 
 // ------------------------------------------------------
-// Récupérer tous les produits (pagination)
+// 🔥 TOUS LES PRODUITS (pagination Shopify)
 // ------------------------------------------------------
 async function getAllProducts() {
   let products = [];
@@ -149,7 +176,7 @@ async function getAllProducts() {
 }
 
 // ------------------------------------------------------
-// Produits d’une collection
+// 🔥 PRODUITS D’UNE COLLECTION
 // ------------------------------------------------------
 async function getProductsByCollection(collectionId) {
   const res = await shopify.get(
@@ -159,7 +186,7 @@ async function getProductsByCollection(collectionId) {
 }
 
 // ------------------------------------------------------
-// Récupérer tous les blogs
+// 🔥 BLOGS
 // ------------------------------------------------------
 async function getAllBlogs() {
   const res = await shopify.get(`/blogs.json`);
@@ -167,7 +194,7 @@ async function getAllBlogs() {
 }
 
 // ------------------------------------------------------
-// Articles d’un blog
+// 🔥 ARTICLES DE BLOG (pagination)
 // ------------------------------------------------------
 async function getArticlesByBlog(blogId) {
   let articles = [];
