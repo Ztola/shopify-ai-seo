@@ -1,4 +1,48 @@
-// 🔥 Prompt IA
+/* -------------------------------------------------------------
+   🔥 ROUTE 2 : POST /optimize-product  
+   Optimise un produit unique (IA + Shopify update)
+-------------------------------------------------------------- */
+router.post("/optimize-product", async (req, res) => {
+  try {
+    const { productId } = req.body;
+
+    if (!productId) {
+      return res.status(400).json({ error: "Missing productId" });
+    }
+
+    const product = await getProductById(productId);
+    if (!product) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    /* -------------------------------------------------------------
+       🔥 Récup collection + produits pour MAILLAGE INTERNE
+    -------------------------------------------------------------- */
+    const collections = await getAllCollections();
+    let selectedCollection = null;
+    let collectionProducts = [];
+
+    for (const col of collections) {
+      const prods = await getProductsByCollection(col.id);
+      if (prods.some((p) => p.id == productId)) {
+        selectedCollection = col;
+        collectionProducts = prods.filter((p) => p.id != productId);
+        break;
+      }
+    }
+
+    const SHOP_URL = `https://${process.env.SHOPIFY_SHOP_URL}`;
+
+    const collectionUrl = selectedCollection
+      ? `${SHOP_URL}/collections/${selectedCollection.handle}`
+      : null;
+
+    const productsWithUrls = collectionProducts.map((p) => ({
+      title: p.title,
+      url: `${SHOP_URL}/products/${p.handle}`
+    }));
+
+    // 🔥 Prompt IA — EXACTEMENT TON PROMPT
     const prompt = `
 Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
 
@@ -62,10 +106,10 @@ DESCRIPTION ORIGINALE : ${product.body_html}
 Nom : ${selectedCollection ? selectedCollection.title : "Aucune"}
 URL : ${collectionUrl || "Aucune"}
 
-🔥 PRODUITS DE LA COLLECTION POUR MAILLAGE INTERNE :
+🔥 PRODUITS POUR MAILLAGE INTERNE :
 ${productsWithUrls.map((p) => `- ${p.title} : ${p.url}`).join("\n")}
 
-🔥 Format de réponse OBLIGATOIRE (JSON uniquement) :
+🔥 Format JSON OBLIGATOIRE :
 {
   "keyword": "",
   "title": "",
@@ -74,9 +118,9 @@ ${productsWithUrls.map((p) => `- ${p.title} : ${p.url}`).join("\n")}
   "meta_description": "",
   "description_html": ""
 }
-    `;
+`;
 
-    // 🔥 Appel IA
+    // ⭐ APPEL IA — ATTENTION: AWAIT À L’INTÉRIEUR D'UNE FONCTION ASYNC = OK
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
@@ -84,8 +128,6 @@ ${productsWithUrls.map((p) => `- ${p.title} : ${p.url}`).join("\n")}
     });
 
     let output = ai.choices[0].message.content.trim();
-
-    // Nettoyage
     output = output.replace(/```json/g, "").replace(/```/g, "").trim();
 
     let json;
@@ -104,7 +146,7 @@ ${productsWithUrls.map((p) => `- ${p.title} : ${p.url}`).join("\n")}
       body_html: json.description_html
     });
 
-    // 🔥 Marquer comme optimisé
+    // 🔥 Tag "optimized"
     await markAsOptimized(productId);
 
     res.json({
