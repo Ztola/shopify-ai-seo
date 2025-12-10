@@ -92,38 +92,26 @@ router.post("/optimize-product", async (req, res) => {
 
     // 🔥 Prompt IA
     const prompt = `
-Tu es un expert SEO Shopify. Tu dois optimiser le produit en te basant
-SUR SA DESCRIPTION ACTUELLE, que tu dois absolument reformuler intégralement.
+En tant que rédacteur de descriptions de produits pour un site e-commerce, votre tâche consiste à créer des descriptions détaillées et persuasives qui incitent les clients potentiels à acheter le produit. Vos descriptions doivent être précises, informatives et convaincantes, en mettant en avant les caractéristiques clés du produit ainsi que ses avantages par rapport aux autres produits similaires sur le marché. Veuillez vous assurer que vos descriptions sont adaptées au public cible du site e-commerce et qu'elles reflètent l'image de marque de l'entreprise. Vous devriez également inclure des mots-clés pertinents dans vos descriptions pour améliorer la visibilité du produit dans les résultats de recherche. Enfin, veuillez respecter les normes éthiques lors de la rédaction des descriptions de produits, en évitant toute fausse information ou exagération. 
 
 IMPORTANT :
 - Toute description doit être réécrite (pas copiée, pas paraphrasée légèrement, mais reformulée entièrement).
 - Si la description contient déjà des liens, tu dois les remplacer par :
     • soit du maillage interne (vers un autre produit ou collection),
-    • soit du maillage externe pertinent (Wikipedia, Ameli, Doctolib…).
+    • soit du maillage externe pertinent (Wikipedia, Ameli, Doctolib ou d'autres source).
 - Si la description contient des noms de marques existantes, tu dois les remplacer par le nom du site Shopify actuel : ${process.env.SHOPIFY_BRAND_NAME}.
 
-Règles SEO obligatoires :
-1. Ajouter le mot-clé principal au début du titre SEO.
-2. Ajouter ce mot-clé dans la méta description.
-3. Utiliser ce mot-clé dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
-4. Utiliser ce mot-clé au début du contenu.
-5. Utiliser ce mot-clé dans tout le contenu.
-6. Rédiger une description HTML riche de 600 à 800 mots (pas plus).
-7. Inclure un <h2> contenant le mot-clé principal.
-8. Inclure plusieurs <h3> contenant le mot-clé principal.
-9. Ajouter 1 lien sortant pertinent (Wikipedia, Ameli, Doctolib…).
-10. Viser environ 1% de densité du mot-clé sans bourrage.
-11. Ajouter 1 ou 2 liens internes vers un produit.
-12. Ajouter 1 ou 2 liens internes vers une collection.
-13. Définir un mot-clé principal pertinent.
-14. Le titre doit contenir un power word.
-15. Paragraphes lisibles, ton humain.
-16. AUCUN emoji, AUCUN markdown.
-17. Ne jamais écrire “version optimisée” ou similaire.
-18. Description orientée conversion.
-19. Reformuler absolument toute la description existante en supprimant toute répétition et toute ancienne marque.
-20. La meta description doit faire MAXIMUM 160 caractères.
-21. Le meta title doit faire MAXIMUM 70 caractères.
+Rédige une description produit en HTML en respectant exactement la structure suivante :
+
+<div class="product__description rte quick-add-hidden"> <h2>[Titre principal du produit avec son nom ou son modèle]</h2> <p>Rédige un paragraphe d’introduction présentant brièvement la gamme, puis ajoute un lien interne cliquable vers une collection ou un produit, sous la forme d’un ancrage texte.</p> <h3>[Sous-titre accrocheur mentionnant le nom du produit et sa promesse principale]</h3> <ul> <li>[Premier avantage clé du produit]</li> <li>[Deuxième avantage clé du produit]</li> </ul> <p>Rédige un premier paragraphe expliquant en détail les bénéfices du produit, ses effets, son confort ou son utilité.</p> <p>Rédige un deuxième paragraphe décrivant la clientèle idéale, les matériaux, la qualité, la durabilité ou le design.</p> <p>Rédige un paragraphe final motivant l’achat, en insistant sur le confort, la praticité ou la transformation apportée. Termine par une phrase d’incitation à tester le produit.</p> </div>
+
+Contraintes :
+
+– Ne jamais copier la description d’origine : tout doit être reformulé.
+– Garder la même structure (h2, lien interne sous forme d’ancrage, h3, liste à puces, 3 paragraphes).
+– Ton professionnel, fluide, descriptif et orienté conversion.
+– Aucun emoji, aucun markdown.
+– HTML propre uniquement.
 
 Renvoie STRICTEMENT ce JSON :
 {
