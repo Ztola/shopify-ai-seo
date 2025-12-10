@@ -17,36 +17,33 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-/* ---------------------------------------------------------------------
-   🔥 ROUTE 1 : GET /shop-data
---------------------------------------------------------------------- */
+/* -------------------------------------------------------------
+   🔥 ROUTE 1 : GET /shop-data  
+   Récupère toutes les collections + produits + statut optimized
+-------------------------------------------------------------- */
 router.get("/shop-data", async (req, res) => {
   try {
     const collections = await getAllCollections();
+    const allProducts = await getAllProducts();
 
     if (!collections || collections.length === 0) {
       return res.status(500).json({ error: "No collections found" });
     }
 
     const data = { collections: {} };
-    const allProducts = await getAllProducts();
 
     for (const col of collections) {
-      const colId = col.id;
-      const colHandle = col.handle;
-      const colTitle = col.title;
+      const colProducts = await getProductsByCollection(col.id);
 
-      const products = await getProductsByCollection(colId);
-
-      data.collections[colHandle] = {
-        id: colId,
-        title: colTitle,
-        handle: colHandle,
-        products: products.map((p) => ({
+      data.collections[col.handle] = {
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
+        products: colProducts.map((p) => ({
           id: p.id,
           title: p.title,
           handle: p.handle,
-          optimized: p.tags.includes("optimized") ? true : false
+          optimized: p.tags?.includes("optimized") || false
         }))
       };
     }
@@ -67,9 +64,10 @@ router.get("/shop-data", async (req, res) => {
   }
 });
 
-/* ---------------------------------------------------------------------
-   🔥 ROUTE 2 : POST /optimize-product
---------------------------------------------------------------------- */
+/* -------------------------------------------------------------
+   🔥 ROUTE 2 : POST /optimize-product  
+   Optimise un produit unique (IA + Shopify update)
+-------------------------------------------------------------- */
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
@@ -79,38 +77,25 @@ router.post("/optimize-product", async (req, res) => {
     }
 
     const product = await getProductById(productId);
-
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // ----------------------------------------------------------------
-    // 🔥 TON PROMPT ORIGINAL ENTIER EST ICI
-    // ----------------------------------------------------------------
+    // 🔥 Prompt IA
     const prompt = `
 Tu es un expert SEO Shopify. Fournis une optimisation complète STRICTEMENT en JSON valide.
 
-Règles SEO obligatoires :
-1. Ajouter le mot-clé principal au début du titre SEO.
-2. Ajouter le mot-clé principal dans la méta description.
-3. Utiliser le mot-clé principal dans l’URL (slug), sans accents, sans majuscules, max 75 caractères.
-4. Utiliser le mot-clé principal au début du contenu.
-5. Utiliser le mot-clé principal dans tout le contenu.
-6. Produire une description HTML riche de 600 à 800 mots.
-7. Inclure un H2 contenant le mot-clé principal.
-8. Inclure plusieurs H3 contenant le mot-clé principal.
-9. Ajouter 1 lien sortant pertinent (Wikipedia, Ameli, Doctolib, etc...).
-10. Viser environ 1% de densité du mot-clé sans bourrage.
-11. Ajouter 1 ou 2 liens internes vers un produit.
-12. Ajouter 1 ou 2 liens internes vers une collection.
-13. Définir un mot-clé principal pertinent.
-14. Le titre doit contenir un power word.
-15. Paragraphes lisibles, ton humain.
-16. AUCUN emoji, AUCUN markdown.
-17. Ne jamais écrire “version optimisée” ou similaire.
-18. Description orientée conversion.
+Règles SEO :
+1. Mot-clé principal au début du titre SEO
+2. Mot-clé dans la méta description
+3. URL (slug) courte, sans accents, sans majuscules
+4. Description HTML riche de 600 à 800 mots
+5. H2 + H3 contenant le mot-clé
+6. Aucun emoji
+7. Description orientée conversion
+8. Jamais écrire "version optimisée"
 
-Renvoie uniquement ce JSON strict :
+Renvoie uniquement ce JSON :
 {
   "keyword": "",
   "title": "",
@@ -120,12 +105,11 @@ Renvoie uniquement ce JSON strict :
   "description_html": ""
 }
 
-Données du produit :
 TITRE : ${product.title}
-DESCRIPTION ORIGINALE : ${product.body_html}
+DESCRIPTION : ${product.body_html}
 `;
 
-    // Appel OpenAI
+    // 🔥 Appel IA
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
@@ -134,23 +118,18 @@ DESCRIPTION ORIGINALE : ${product.body_html}
 
     let output = ai.choices[0].message.content.trim();
 
-    // Nettoyage JSON
-    output = output.replace(/```json/g, "");
-    output = output.replace(/```/g, "").trim();
+    // Nettoyage
+    output = output.replace(/```json/g, "").replace(/```/g, "").trim();
 
     let json;
     try {
       json = JSON.parse(output);
     } catch (err) {
-      console.error("❌ Invalid JSON from AI", output);
-      return res.status(500).json({
-        error: "Invalid JSON from AI",
-        details: err.message,
-        raw: output
-      });
+      console.error("❌ JSON AI error", output);
+      return res.status(500).json({ error: "Invalid JSON", raw: output });
     }
 
-    // Mise à jour Shopify
+    // 🔥 Mise à jour Shopify
     await updateProduct(productId, {
       id: productId,
       title: json.title,
@@ -158,11 +137,13 @@ DESCRIPTION ORIGINALE : ${product.body_html}
       body_html: json.description_html
     });
 
+    // 🔥 Marquer comme optimisé
     await markAsOptimized(productId);
 
     res.json({
       success: true,
-      message: "Produit optimisé avec succès",
+      optimized: true,
+      productId,
       ...json
     });
 
@@ -175,10 +156,10 @@ DESCRIPTION ORIGINALE : ${product.body_html}
   }
 });
 
-/* ---------------------------------------------------------------------
-   🔥 ROUTE 3 : POST /optimize-collection
-   Optimise tous les produits d'une collection
---------------------------------------------------------------------- */
+/* -------------------------------------------------------------
+   🔥 ROUTE 3 : POST /optimize-collection  
+   Optimise chaque produit d’une collection
+-------------------------------------------------------------- */
 router.post("/optimize-collection", async (req, res) => {
   try {
     const { collectionId } = req.body;
@@ -187,16 +168,13 @@ router.post("/optimize-collection", async (req, res) => {
       return res.status(400).json({ error: "Missing collectionId" });
     }
 
-    // Récupérer les produits de la collection
     const products = await getProductsByCollection(collectionId);
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({ error: "No products found in this collection" });
+    if (!products.length) {
+      return res.status(404).json({ error: "No products found" });
     }
 
     const results = [];
 
-    // Boucle sur chaque produit
     for (const product of products) {
       try {
         const optimizeRes = await fetch(
@@ -208,17 +186,26 @@ router.post("/optimize-collection", async (req, res) => {
           }
         );
 
-        const data = await optimizeRes.json();
-        results.push({ id: product.id, title: product.title, success: true, data });
+        const json = await optimizeRes.json();
+        results.push({
+          id: product.id,
+          title: product.title,
+          success: json.success || false
+        });
 
       } catch (err) {
-        results.push({ id: product.id, title: product.title, success: false, error: err.message });
+        results.push({
+          id: product.id,
+          title: product.title,
+          success: false,
+          error: err.message
+        });
       }
     }
 
     res.json({
       success: true,
-      optimized: results.length,
+      optimized_count: results.length,
       results
     });
 
