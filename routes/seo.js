@@ -50,7 +50,7 @@ const openai = new OpenAI({
 
 /* -------------------------------------------------------------
    🔥 ROUTE 1 : GET /shop-data  
-   Récupère toutes les collections + produits + statut optimized
+   Récupère : collections + produits + URLs propres pour le maillage interne
 -------------------------------------------------------------- */
 router.get("/shop-data", async (req, res) => {
   try {
@@ -61,26 +61,40 @@ router.get("/shop-data", async (req, res) => {
       return res.status(500).json({ error: "No collections found" });
     }
 
+    // Domaine complet du shop  
+    const SHOP_DOMAIN = `https://${process.env.SHOPIFY_SHOP_URL}`;
+
     const data = { collections: {} };
 
     for (const col of collections) {
       const colProducts = await getProductsByCollection(col.id);
 
+      // Tri par date de création (du plus récent au plus ancien)
+      colProducts.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      // Construire URLs propres pour toute la collection
+      const collectionUrl = `${SHOP_DOMAIN}/collections/${col.handle}`;
+
+      const productsWithUrls = colProducts.map((p) => ({
+        id: p.id,
+        title: p.title,
+        handle: p.handle,
+        url: `${SHOP_DOMAIN}/products/${p.handle}`,
+        optimized: p.tags?.includes("optimized") || false
+      }));
+
       data.collections[col.handle] = {
         id: col.id,
         title: col.title,
         handle: col.handle,
-        products: colProducts.map((p) => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          optimized: p.tags?.includes("optimized") || false
-        }))
+        url: collectionUrl,
+        products: productsWithUrls
       };
     }
 
     res.json({
       success: true,
+      shop_domain: SHOP_DOMAIN,
       total_products: allProducts.length,
       total_collections: collections.length,
       data
@@ -112,6 +126,44 @@ router.post("/optimize-product", async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
+    /* -------------------------------------------------------------
+       🔥 Récupération du nom dynamique de la boutique
+    -------------------------------------------------------------- */
+    function getDynamicBrand() {
+      if (!process.env.SHOPIFY_SHOP_URL) return "VotreBoutique";
+      const domain = process.env.SHOPIFY_SHOP_URL.split(".")[0];
+      return domain.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    }
+
+    const BRAND = getDynamicBrand();
+
+    /* -------------------------------------------------------------
+       🔥 Récupération collection + produits pour MAILLAGE INTERNE
+    -------------------------------------------------------------- */
+    const collections = await getAllCollections();
+    let selectedCollection = null;
+    let collectionProducts = [];
+
+    for (const col of collections) {
+      const prods = await getProductsByCollection(col.id);
+      if (prods.some((p) => p.id == productId)) {
+        selectedCollection = col;
+        collectionProducts = prods.filter((p) => p.id != productId);
+        break;
+      }
+    }
+
+    const SHOP_URL = `https://${process.env.SHOPIFY_SHOP_URL}`;
+
+    const collectionUrl = selectedCollection
+      ? `${SHOP_URL}/collections/${selectedCollection.handle}`
+      : null;
+
+    const productsWithUrls = collectionProducts.map((p) => ({
+      title: p.title,
+      url: `${SHOP_URL}/products/${p.handle}`
+    }));
+
     // 🔥 Prompt IA
     const prompt = `
 Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
@@ -125,7 +177,9 @@ Ta mission : générer une description HTML complète au même style, même stru
 <p>
 Introduction présentant le bénéfice principal, incluant deux liens internes :
 – Un lien vers une collection liée.
-– Un lien vers une autre collection ou catégorie.
+<p>
+Ajoute un lien interne obligatoire vers un produit recommandé.
+</p>
 Description centrée sur le confort, le soutien, l'élégance et l’usage quotidien.
 </p>
 
@@ -147,15 +201,6 @@ Deux paragraphes de développement expliquant :
 – Les usages possibles (ville, travail, marche…).
 – Le soutien ergonomique.
 </p>
-
-<p>
-Ajoute un lien interne obligatoire vers un produit recommandé.
-</p>
-
-<p>
-Ajoute un lien interne obligatoire vers une collection recommandée.
-</p>
-
 <p>
 Inclure également 1 lien externes fiables comme :
 – Ameli (santé)
@@ -167,9 +212,6 @@ N'inclure AUCUN lien externe qui n’est pas en rapport direct avec le thème.
 
 <p>
 Conclusion émotionnelle valorisant :
-– Le confort durable
-– La marche sans douleur
-– Le style élégant
 – La nécessité d’acheter dès maintenant
 </p>
 
@@ -178,7 +220,18 @@ Contraintes :
 – Ne jamais copier la description d’origine : tout doit être reformulé.
 – HTML propre uniquement.
 
-Renvoie STRICTEMENT ce JSON :
+🔥 DONNÉES DU PRODUIT :
+TITRE : ${product.title}
+DESCRIPTION ORIGINALE : ${product.body_html}
+
+🔥 COLLECTION DU PRODUIT :
+Nom : ${selectedCollection ? selectedCollection.title : "Aucune"}
+URL : ${collectionUrl || "Aucune"}
+
+🔥 PRODUITS DE LA COLLECTION POUR MAILLAGE INTERNE :
+${productsWithUrls.map((p) => `- ${p.title} : ${p.url}`).join("\n")}
+
+🔥 Format de réponse OBLIGATOIRE (JSON uniquement) :
 {
   "keyword": "",
   "title": "",
@@ -187,11 +240,7 @@ Renvoie STRICTEMENT ce JSON :
   "meta_description": "",
   "description_html": ""
 }
-
-Données du produit :
-TITRE ACTUEL : ${product.title}
-DESCRIPTION ACTUELLE : ${product.body_html}
-`;
+    `;
 
     // 🔥 Appel IA
     const ai = await openai.chat.completions.create({
