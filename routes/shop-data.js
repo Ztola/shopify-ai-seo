@@ -1,7 +1,15 @@
 const express = require("express");
 const router = express.Router();
-const { createDynamicClient } = require("../services/shopify");
 
+const {
+    getAllCollections,
+    getProductsByCollection
+} = require("../services/shopify");
+
+/**
+ * 🔥 Endpoint principal pour récupérer les produits & collections
+ * Utilisé par WordPress dans produits.php
+ */
 router.get("/shop-data", async (req, res) => {
     try {
         const shopUrl = req.headers["x-shopify-url"];
@@ -10,42 +18,42 @@ router.get("/shop-data", async (req, res) => {
         if (!shopUrl || !token) {
             return res.status(400).json({
                 success: false,
-                error: "Missing Shopify credentials"
+                error: "Credentials missing in headers (x-shopify-url / x-shopify-token)"
             });
         }
 
-        // Création du client Shopify dynamique
-        const client = createDynamicClient(shopUrl, token);
+        console.log("📦 Boutique demandée :", shopUrl);
 
-        // 🔥 Récupérer produits + collections
-        const collections = await client.get(`/custom_collections.json?limit=250`);
-        const smart = await client.get(`/smart_collections.json?limit=250`);
+        // 1️⃣ Récup collections
+        const collections = await getAllCollections(req);
 
-        let allCollections = [
-            ...collections.data.custom_collections,
-            ...smart.data.smart_collections
-        ];
+        // 2️⃣ Récupérer les produits de chaque collection
+        for (let col of collections) {
+            const products = await getProductsByCollection(req, col.id);
 
-        // Charger les produits de chaque collection
-        for (let col of allCollections) {
-            const p = await client.get(`/collections/${col.id}/products.json?limit=250`);
-            col.products = p.data.products || [];
+            col.products = products.map(p => ({
+                id: p.id,
+                title: p.title,
+                body_html: p.body_html,
+                handle: p.handle
+            }));
         }
 
         res.json({
             success: true,
             data: {
-                collections: allCollections
+                collections
             }
         });
 
     } catch (error) {
-        console.error("❌ shop-data error:", error.response?.data || error.message);
-        res.status(500).json({
+        console.error("❌ Error /shop-data :", error.response?.data || error.message);
+
+        return res.status(500).json({
             success: false,
             error: error.message
         });
     }
 });
 
-module.exports = router;
+module.exports = r
