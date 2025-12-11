@@ -26,16 +26,17 @@ router.get("/blogs", async (req, res) => {
             blogs.map(async (b) => {
                 const articles = await getArticlesByBlog(b.id);
                 return {
-                    ...b,
-                    articles_count: articles.length,
-                    articles: articles.map(a => ({
-                        id: a.id,
-                        title: a.title,
-                        handle: a.handle,
-                        created_at: a.created_at,
-                        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`
-                    }))
-                };
+    ...b,
+    url_base: process.env.SHOPIFY_SHOP_URL, // 👈 Ajout important
+    articles_count: articles.length,
+    articles: articles.map(a => ({
+        id: a.id,
+        title: a.title,
+        handle: a.handle,
+        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`,
+        created_at: a.created_at
+    }))
+};
             })
         );
 
