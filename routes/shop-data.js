@@ -1,16 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { createDynamicClient } = require("../services/shopify");
 
-const {
-    createDynamicClient,
-    getAllCollections,
-    getAllProducts
-} = require("../services/shopify");
-
-// --------------------------------------------------------------
-// 🔥 ROUTE : GET /api/shop-data
-// Retourne toutes les collections + produits pour la boutique active
-// --------------------------------------------------------------
 router.get("/shop-data", async (req, res) => {
     try {
         const shopUrl = req.headers["x-shopify-url"];
@@ -19,34 +10,40 @@ router.get("/shop-data", async (req, res) => {
         if (!shopUrl || !token) {
             return res.status(400).json({
                 success: false,
-                error: "Missing shop credentials"
+                error: "Missing Shopify credentials"
             });
         }
 
-        // Client Shopify dynamique
+        // Création du client Shopify dynamique
         const client = createDynamicClient(shopUrl, token);
 
-        // Récup collections
-        const collections = await getAllCollections(client);
+        // 🔥 Récupérer produits + collections
+        const collections = await client.get(`/custom_collections.json?limit=250`);
+        const smart = await client.get(`/smart_collections.json?limit=250`);
 
-        // Ajouter produits pour chaque collection
-        for (let col of collections) {
-            col.products = await getAllProducts(client);
+        let allCollections = [
+            ...collections.data.custom_collections,
+            ...smart.data.smart_collections
+        ];
+
+        // Charger les produits de chaque collection
+        for (let col of allCollections) {
+            const p = await client.get(`/collections/${col.id}/products.json?limit=250`);
+            col.products = p.data.products || [];
         }
 
         res.json({
             success: true,
             data: {
-                shop: shopUrl,
-                collections
+                collections: allCollections
             }
         });
 
-    } catch (err) {
-        console.error("❌ Error /shop-data:", err);
+    } catch (error) {
+        console.error("❌ shop-data error:", error.response?.data || error.message);
         res.status(500).json({
             success: false,
-            error: err.message
+            error: error.message
         });
     }
 });
