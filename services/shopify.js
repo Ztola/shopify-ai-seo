@@ -243,6 +243,6 @@ module.exports = {
   getAllCollections,
   getProductsByCollection,
   getAllBlogs,
-  getArticlesByBlog
+  getArticlesByBlog,
   createBlogArticle
 };
