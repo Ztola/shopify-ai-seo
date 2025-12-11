@@ -1,23 +1,32 @@
+// ------------------------------------------------------
+// 🔥 Shopify Multi-Boutiques (SaaS Ready)
+// ------------------------------------------------------
 const axios = require("axios");
 
 // ------------------------------------------------------
-// DEBUG URL AU DÉMARRAGE
+// 🔥 CLIENT SHOPIFY DYNAMIQUE (Important !)
 // ------------------------------------------------------
-console.log(
-  "🔍 Testing Shopify URL:",
-  `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products.json`
-);
+function createDynamicClient(shopUrl, token) {
+  return axios.create({
+    baseURL: `https://${shopUrl}/admin/api/2024-01`,
+    headers: {
+      "X-Shopify-Access-Token": token,
+      "Content-Type": "application/json"
+    }
+  });
+}
 
-// ------------------------------------------------------
-// INSTANCE SHOPIFY
-// ------------------------------------------------------
-const shopify = axios.create({
-  baseURL: `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
-  headers: {
-    "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-    "Content-Type": "application/json"
-  }
-});
+/**
+ * Retourne le bon client :
+ * - celui envoyé par WordPress (headers)
+ * - sinon celui du .env
+ */
+function getShopifyClient(req) {
+  const shopUrl = req?.headers?.["x-shopify-url"] || process.env.SHOPIFY_SHOP_URL;
+  const token   = req?.headers?.["x-shopify-token"] || process.env.SHOPIFY_ACCESS_TOKEN;
+
+  return createDynamicClient(shopUrl, token);
+}
 
 // ------------------------------------------------------
 // AUTO RATE LIMITER Shopify (évite erreur 429)
@@ -26,50 +35,50 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-let lastCall = 0;
-const MIN_DELAY = 500; // 2 requêtes par seconde max
+async function rateLimiter(client, config) {
+  if (!client._lastCall) client._lastCall = 0;
 
-shopify.interceptors.request.use(async config => {
   const now = Date.now();
-  const timeSinceLastCall = now - lastCall;
+  const diff = now - client._lastCall;
 
-  if (timeSinceLastCall < MIN_DELAY) {
-    await wait(MIN_DELAY - timeSinceLastCall);
+  if (diff < 500) {
+    await wait(500 - diff);
   }
 
-  lastCall = Date.now();
+  client._lastCall = Date.now();
   return config;
-});
+}
 
 // ------------------------------------------------------
-// 🔥 RÉCUPÉRER UN PRODUIT
+// 🔥 /!\ TOUTES LES FONCTIONS ACCEPTENT MAINTENANT (req)
 // ------------------------------------------------------
-async function getProductById(id) {
-  const res = await shopify.get(`/products/${id}.json`);
+
+async function getProductById(req, id) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  const res = await client.get(`/products/${id}.json`);
   return res.data.product;
 }
 
-// ------------------------------------------------------
-// 🔥 RÉCUPÉRER COLLECTION D’UN PRODUIT
-// ------------------------------------------------------
-async function getProductCollection(productId) {
-  const collects = await shopify.get(`/collects.json?product_id=${productId}`);
+async function getProductCollection(req, productId) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
 
-  if (!collects.data.collects || collects.data.collects.length === 0) {
-    return null;
-  }
+  const collects = await client.get(`/collects.json?product_id=${productId}`);
+
+  if (!collects.data.collects?.length) return null;
 
   const collectionId = collects.data.collects[0].collection_id;
-  const collection = await shopify.get(`/collections/${collectionId}.json`);
-
-  return collection.data.collection;
+  const res = await client.get(`/collections/${collectionId}.json`);
+  return res.data.collection;
 }
 
-// ------------------------------------------------------
-// 🔥 METTRE À JOUR UN PRODUIT
-// ------------------------------------------------------
-async function updateProduct(id, data) {
-  await shopify.put(`/products/${id}.json`, {
+async function updateProduct(req, id, data) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  await client.put(`/products/${id}.json`, {
     product: {
       id,
       title: data.title,
@@ -79,34 +88,22 @@ async function updateProduct(id, data) {
   });
 }
 
-// ------------------------------------------------------
-// 🔥 MARQUER UN PRODUIT COMME OPTIMISÉ (TAG + METAFIELD)
-// ------------------------------------------------------
-async function markAsOptimized(productId) {
-  console.log("🔖 Marquage du produit comme optimisé…");
+async function markAsOptimized(req, productId) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
 
-  // 1️⃣ Récupérer le produit
-  const res = await shopify.get(`/products/${productId}.json`);
+  const res = await client.get(`/products/${productId}.json`);
   const product = res.data.product;
 
-  let currentTags = product.tags ? product.tags.split(",") : [];
+  let tags = product.tags ? product.tags.split(",").map(t => t.trim()) : [];
 
-  // 2️⃣ Ajouter le tag s'il n’existe pas
-  const cleanTags = currentTags.map(t => t.trim());
-  if (!cleanTags.includes("optimized")) {
-    cleanTags.push("optimized");
-  }
+  if (!tags.includes("optimized")) tags.push("optimized");
 
-  // 3️⃣ Mise à jour du produit avec nouveau tag
-  await shopify.put(`/products/${productId}.json`, {
-    product: {
-      id: productId,
-      tags: cleanTags.join(", ")
-    }
+  await client.put(`/products/${productId}.json`, {
+    product: { id: productId, tags: tags.join(", ") }
   });
 
-  // 4️⃣ Ajouter aussi le Metafield (optionnel)
-  await shopify.post(`/metafields.json`, {
+  await client.post(`/metafields.json`, {
     metafield: {
       namespace: "ai_seo",
       key: "optimized",
@@ -117,122 +114,102 @@ async function markAsOptimized(productId) {
     }
   });
 
-  console.log("✔ Produit marqué optimisé (Tag + Metafield)");
+  return true;
 }
 
-// ------------------------------------------------------
-// 🔥 VÉRIFIER SI DÉJÀ OPTIMISÉ
-// ------------------------------------------------------
-async function isAlreadyOptimized(productId) {
-  const res = await shopify.get(`/products/${productId}/metafields.json`);
+async function isAlreadyOptimized(req, productId) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  const res = await client.get(`/products/${productId}/metafields.json`);
 
   return res.data.metafields.some(
-    (m) =>
-      m.namespace === "ai_seo" &&
-      m.key === "optimized" &&
-      m.value === "true"
+    m => m.namespace === "ai_seo" && m.key === "optimized" && m.value === "true"
   );
 }
 
-// ------------------------------------------------------
-// 🔥 TOUTES LES COLLECTIONS
-// ------------------------------------------------------
-async function getAllCollections() {
-  const custom = await shopify.get(`/custom_collections.json?limit=250`);
-  const smart = await shopify.get(`/smart_collections.json?limit=250`);
+async function getAllCollections(req) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
 
-  return [
-    ...custom.data.custom_collections,
-    ...smart.data.smart_collections
-  ];
+  const custom = await client.get(`/custom_collections.json?limit=250`);
+  const smart = await client.get(`/smart_collections.json?limit=250`);
+
+  return [...custom.data.custom_collections, ...smart.data.smart_collections];
 }
 
-// ------------------------------------------------------
-// 🔥 TOUS LES PRODUITS (pagination Shopify)
-// ------------------------------------------------------
-async function getAllProducts() {
+async function getAllProducts(req) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
   let products = [];
   let url = `/products.json?limit=250`;
 
   while (url) {
-    const res = await shopify.get(url);
+    const res = await client.get(url);
     products = products.concat(res.data.products);
 
-    const linkHeader = res.headers["link"];
-
-    if (linkHeader && linkHeader.includes('rel="next"')) {
-      const nextUrl = linkHeader
-        .split(",")
-        .find((s) => s.includes('rel="next"'))
+    const link = res.headers["link"];
+    if (link && link.includes('rel="next"')) {
+      url = link.split(",")
+        .find(s => s.includes('rel="next"'))
         .match(/<(.+?)>/)[1]
         .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
-      url = nextUrl;
-    } else {
-      url = null;
-    }
+    } else url = null;
   }
 
   return products;
 }
 
-// ------------------------------------------------------
-// 🔥 PRODUITS D’UNE COLLECTION
-// ------------------------------------------------------
-async function getProductsByCollection(collectionId) {
-  const res = await shopify.get(
-    `/collections/${collectionId}/products.json?limit=250`
-  );
+async function getProductsByCollection(req, collectionId) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  const res = await client.get(`/collections/${collectionId}/products.json?limit=250`);
   return res.data.products;
 }
 
-// ------------------------------------------------------
-// 🔥 BLOGS
-// ------------------------------------------------------
-async function getAllBlogs() {
-  const res = await shopify.get(`/blogs.json`);
+async function getAllBlogs(req) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  const res = await client.get(`/blogs.json`);
   return res.data.blogs;
 }
 
-// ------------------------------------------------------
-// 🔥 ARTICLES D’UN BLOG — NOUVELLE API SHOPIFY 2024+
-// ------------------------------------------------------
-async function getArticlesByBlog(blogId) {
+async function getArticlesByBlog(req, blogId) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
   let articles = [];
   let url = `/articles.json?blog_id=${blogId}&limit=250`;
 
   while (url) {
-    const res = await shopify.get(url);
+    const res = await client.get(url);
 
     if (!res.data.articles) break;
-
     articles = articles.concat(res.data.articles);
 
-    const linkHeader = res.headers["link"];
-    if (linkHeader && linkHeader.includes('rel="next"')) {
-      const nextUrl = linkHeader
-        .split(",")
-        .find((s) => s.includes('rel="next"'))
+    const link = res.headers["link"];
+    if (link && link.includes('rel="next"')) {
+      url = link.split(",")
+        .find(s => s.includes('rel="next"'))
         .match(/<(.+?)>/)[1]
         .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
-      url = nextUrl;
-    } else {
-      url = null;
-    }
+    } else url = null;
   }
 
   return articles;
 }
 
-// ------------------------------------------------------
-// 🔥 CRÉER UN ARTICLE (NOUVELLE API SHOPIFY)
-// ------------------------------------------------------
-async function createBlogArticle(blogId, article) {
-  const res = await shopify.post(`/articles.json`, {
-    article: {
-      ...article,
-      blog_id: blogId
-    }
+async function createBlogArticle(req, blogId, article) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use(c => rateLimiter(client, c));
+
+  const res = await client.post(`/articles.json`, {
+    article: { ...article, blog_id: blogId }
   });
+
   return res.data.article;
 }
 
@@ -250,5 +227,5 @@ module.exports = {
   getProductsByCollection,
   getAllBlogs,
   getArticlesByBlog,
-  createBlogArticle
+  createBlogArticle,
 };
