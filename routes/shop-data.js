@@ -6,59 +6,59 @@ const {
   getProductsByCollection
 } = require("../services/shopify");
 
-/* ===============================================================
-   🔥 Route : GET /api/shop-data
-   → Retourne toutes les collections + leurs produits
-   → Utilise automatiquement la boutique envoyée via headers
-================================================================ */
+/* ===================================================================
+   🔥 GET /api/shop-data  
+   → Multi-boutiques (headers x-shopify-url & x-shopify-token)
+   → Renvoie collections + produits (minimal structure)
+=================================================================== */
 router.get("/shop-data", async (req, res) => {
   try {
-    console.log("📦 [shop-data] Récupération des données Shopify pour :", req.headers["x-shopify-url"]);
+    console.log("📦 [shop-data] Boutique active :", req.headers["x-shopify-url"]);
 
-    // 1️⃣ Récupération des collections de la boutique active
     const collections = await getAllCollections(req);
 
     if (!collections || collections.length === 0) {
       return res.json({
         success: true,
-        data: { collections: [] }
+        collections: []
       });
     }
 
     const finalCollections = [];
 
-    // 2️⃣ Pour chaque collection → récupérer les produits
     for (let col of collections) {
       let products = [];
 
       try {
         products = await getProductsByCollection(req, col.id);
       } catch (err) {
-        console.warn("⚠️ Impossible de récupérer produits pour :", col.title, err.message);
+        console.warn("⚠️ Impossible de récupérer les produits :", col.title);
       }
 
       finalCollections.push({
         id: col.id,
         title: col.title,
         handle: col.handle,
+        url: `https://${req.headers["x-shopify-url"]}/collections/${col.handle}`,
         products: products.map(p => ({
           id: p.id,
           title: p.title,
           handle: p.handle,
-          created_at: p.created_at,          // 🔥 Date réelle Shopify
-          optimized: false,                  // WordPress changera cela
-          image: p.image || null,            // 🔥 utile pour Blog IA
-          body_html: p.body_html || ""       // 🔥 utile pour IA
+          url: `https://${req.headers["x-shopify-url"]}/products/${p.handle}`,
+          image: p?.image?.src || null,
+          price: p?.variants?.[0]?.price || null,
+          optimized: p?.tags?.includes("optimized") || false
         }))
       });
     }
 
-    // 3️⃣ Réponse structurée
-    return res.json({
+    res.json({
       success: true,
-      data: {
-        collections: finalCollections
-      }
+      shop: {
+        url: req.headers["x-shopify-url"],
+        total_collections: collections.length
+      },
+      collections: finalCollections
     });
 
   } catch (err) {
@@ -66,7 +66,7 @@ router.get("/shop-data", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      error: err.message || "Erreur interne serveur"
+      error: err.message || "Erreur interne"
     });
   }
 });
