@@ -273,65 +273,118 @@ router.post("/optimize-collection", async (req, res) => {
 async function createBlogArticle({ title, prompt, brand, collectionUrl, productUrl, productImage, productName, productPrice }) {
 
   const fullPrompt = `
-Tu es un expert SEO Shopify spécialisé dans la rédaction professionnelle longue.
-
-Ta mission : rédiger un article de blog HTML complet, structuré, fluide, avec maillage interne, externe, et des bannières produits esthétiques.
+Tu es un expert en SEO e-commerce et en copywriting orienté conversion.
+Tu dois rédiger un article de blog complet en français, optimisé SEO, structuré, professionnel,
+compatible Shopify, lisible et orienté valeur.
 
 ────────────────────────────────────────
-📌 STRUCTURE OBLIGATOIRE DU BLOG
+🎯 OBJECTIF
 ────────────────────────────────────────
-<h1> Titre principal avec mot-clé </h1>
+- Attirer un trafic Google qualifié.
+- Répondre exactement aux questions que se pose l’utilisateur.
+- Fournir une vraie valeur informationnelle.
+- Orienter naturellement vers le produit suivant (sans vendre agressivement) :
+${productName} (${productUrl})
+- Mentionner subtilement la collection : ${collectionUrl}
 
-<h2> Sous-titre expliquant une notion clé </h2>
-<p> Paragraphe fluide, humain, informatif. </p>
+────────────────────────────────────────
+🧑‍💼 CIBLE
+────────────────────────────────────────
+- Profil du client idéal : personne souffrant d’un problème lié au sujet.
+- Niveau de connaissance : débutant/intermédiaire.
+- Ton : expert, rassurant, premium.
+- Utiliser le "vous" de manière cohérente.
 
-<!-- BANNIÈRE PRODUIT (début) -->
-<div class="ecomx__product-cta-wrapper">
-  <a href="${productUrl}" class="ecomx__product-cta" target="_blank">
-    <img src="${productImage}" alt="${productName}">
-    <span>
-      <span class="ecomx__product-cta__review">⭐️ 4.8/5</span>
-      <span class="ecomx__product-cta__text">${productName} — ${productPrice}€</span>
-    </span>
+────────────────────────────────────────
+🔎 SEO
+────────────────────────────────────────
+- Intégrer le mot-clé principal dans :
+  - H1
+  - Introduction
+  - Un H2 majeur
+  - Conclusion
+- Intégrer naturellement des variantes sémantiques.
+- Ne jamais bourrer de mots-clés.
+- Longueur : 1300 à 1800 mots.
+
+────────────────────────────────────────
+📐 STRUCTURE EXIGÉE DE L’ARTICLE
+────────────────────────────────────────
+
+<h1> Titre principal optimisé SEO avec le mot-clé </h1>
+
+INTRODUCTION (3–5 phrases) :
+- Reformule le problème du lecteur.
+- Explique pourquoi cet article va l’aider.
+- Introduit subtilement le type de produits vendus (sans publicité).
+
+<h2>Question clé que se pose l'utilisateur liée au sujet</h2>
+<p>Explications claires, pédagogiques, structurées.</p>
+
+<!-- BANNIÈRE PRODUIT (style premium + taille réduite) -->
+<div style="margin:20px 0; padding:12px; border:1px solid #eee; border-radius:12px; max-width:450px;">
+  <a href="${productUrl}" style="text-decoration:none; display:flex; gap:10px; align-items:center;" target="_blank">
+    <img src="${productImage}" alt="${productName}" style="width:120px; height:auto; border-radius:8px; object-fit:cover;">
+    <div style="display:flex; flex-direction:column;">
+      <span style="font-size:14px; color:#ffb400;">⭐️ 4.8/5</span>
+      <span style="font-size:15px; font-weight:600;">${productName}</span>
+      <span style="font-size:14px; color:#444;">${productPrice}€</span>
+    </div>
   </a>
 </div>
 
-<h3> Sous-partie détaillée </h3>
-<p> Contenu approfondi, conseils, bénéfices. </p>
+<h2>Deuxième grande question fréquente</h2>
+<p>Réponse claire, détaillée, avec exemples.</p>
 
-<h2> Deuxième grande section informative </h2>
-<p> Explication longue, structurée. </p>
+<h3>Sous-question ou nuance importante</h3>
+<p>Développement, conseils précis, informations utiles.</p>
 
-<!-- BANNIÈRE PRODUIT (fin) -->
-<div class="ecomx__product-cta-wrapper">
-  <a href="${productUrl}" class="ecomx__product-cta" target="_blank">
-    <img src="${productImage}" alt="${productName}">
-    <span>
-      <span class="ecomx__product-cta__review">⭐️ 4.8/5</span>
-      <span class="ecomx__product-cta__text">${productName} — ${productPrice}€</span>
-    </span>
+<h2>Conseils pratiques et étapes à suivre</h2>
+<ul>
+  <li>Étape 1 détaillée</li>
+  <li>Étape 2</li>
+  <li>Étape 3</li>
+  <li>Étape 4</li>
+</ul>
+
+<h2>Erreurs à éviter</h2>
+<ul>
+  <li>Erreur courante 1</li>
+  <li>Erreur courante 2</li>
+</ul>
+
+<!-- DEUXIÈME BANNIÈRE PRODUIT -->
+<div style="margin:25px 0; padding:12px; border:1px solid #eee; border-radius:12px; max-width:450px;">
+  <a href="${productUrl}" style="text-decoration:none; display:flex; gap:10px; align-items:center;" target="_blank">
+    <img src="${productImage}" alt="${productName}" style="width:120px; height:auto; border-radius:8px; object-fit:cover;">
+    <div style="display:flex; flex-direction:column;">
+      <span style="font-size:14px; color:#ffb400;">⭐️ 4.8/5</span>
+      <span style="font-size:15px; font-weight:600;">${productName}</span>
+      <span style="font-size:14px; color:#444;">${productPrice}€</span>
+    </div>
   </a>
 </div>
 
-────────────────────────────────────────
-📌 OBLIGATIONS SEO
-────────────────────────────────────────
-- 1 lien interne vers la collection : ${collectionUrl}
-- 1 lien interne vers le produit : ${productUrl}
-- 1 lien EXTERNE FIABLE (Ameli, Wikipédia, Inserm, Futura Sciences)
-  ⚠️ Le lien doit être STRICTEMENT sur le thème du blog.
-- Ton humain, professionnel, jamais robotique.
-- Ne jamais écrire "IA" ou "généré automatiquement".
-- HTML propre uniquement.
+<h2>Sources fiables et informations externes</h2>
+<p>
+Inclure un lien externe FIABLE et PERTINENT parmi :  
+<a href="https://www.ameli.fr" target="_blank">Ameli</a>,
+<a href="https://fr.wikipedia.org" target="_blank">Wikipédia</a>,
+<a href="https://www.inserm.fr" target="_blank">Inserm</a>,
+<a href="https://www.futura-sciences.com" target="_blank">Futura Sciences</a>.
+</p>
+
+<h2>Conclusion</h2>
+<p>
+Récapitulatif clair.  
+Rappeler pourquoi comprendre le sujet aide réellement le lecteur.  
+Proposer subtilement le produit comme solution naturelle : <a href="${productUrl}">${productName}</a>.
+</p>
+
+À la fin du JSON, propose 3 titres alternatifs optimisés SEO.
 
 ────────────────────────────────────────
-📌 SUJET DU BLOG
-────────────────────────────────────────
-Titre : ${title}
-Sujet : ${prompt}
-
-────────────────────────────────────────
-📌 FORMAT JSON STRICT À RENVOYER
+📌 FORMAT DE SORTIE JSON STRICT :
 ────────────────────────────────────────
 {
   "title": "",
@@ -350,104 +403,6 @@ Sujet : ${prompt}
 
   return JSON.parse(raw);
 }
-
-// -------------------------------------------------------------
-// 🔥 ROUTE BLOG — CRÉATION AUTOMATIQUE D’ARTICLE
-// -------------------------------------------------------------
-router.post("/auto-blog", async (req, res) => {
-  try {
-    const { blogId, topic, scheduled_date } = req.body;
-
-    if (!blogId || !topic) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing blogId or topic"
-      });
-    }
-
-    // -----------------------------------------
-    // 1️⃣ RÉCUPÉRATION COLLECTION + PRODUIT
-    // -----------------------------------------
-    const collections = await getAllCollections();
-    const products = await getAllProducts();
-
-    const relatedCollection =
-      collections.find(c =>
-        topic.toLowerCase().includes(c.title.toLowerCase())
-      ) || collections[0];
-
-    const relatedProduct =
-      products.find(p =>
-        topic.toLowerCase().includes(p.title.toLowerCase())
-      ) || products[0];
-
-    // -----------------------------------------
-    // 2️⃣ EXTRACTION PRODUIT (image + prix)
-    // -----------------------------------------
-    const productImage =
-      relatedProduct?.image?.src ||
-      relatedProduct?.images?.[0]?.src ||
-      "https://via.placeholder.com/600x600?text=Product";
-
-    const productName = relatedProduct?.title || "Produit";
-    const productPrice =
-      relatedProduct?.variants?.[0]?.price || "—";
-
-    const collectionUrl = `${SHOP_URL}/collections/${relatedCollection.handle}`;
-    const productUrl = `${SHOP_URL}/products/${relatedProduct.handle}`;
-
-    // -----------------------------------------
-    // 3️⃣ GÉNÉRATION ARTICLE AVEC IA
-    // -----------------------------------------
-    const article = await createBlogArticle({
-      title: topic,
-      prompt: topic,
-      brand: getDynamicBrandName(),
-      collectionUrl,
-      productUrl,
-      productImage,
-      productName,
-      productPrice
-    });
-
-    // -----------------------------------------
-    // 4️⃣ PUBLICATION SHOPIFY
-    // -----------------------------------------
-    const shopifyRes = await axios.post(
-      `${SHOP_URL}/admin/api/2024-01/blogs/${blogId}/articles.json`,
-      {
-        article: {
-          title: article.title,
-          body_html: article.html,
-          published_at: scheduled_date || new Date().toISOString()
-        }
-      },
-      {
-        headers: {
-          "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    // -----------------------------------------
-    // 5️⃣ RÉPONSE FINALE
-    // -----------------------------------------
-    return res.json({
-      success: true,
-      article: shopifyRes.data.article
-    });
-
-  } catch (err) {
-    console.error("❌ Error /auto-blog", err);
-    res.status(500).json({
-      success: false,
-      error: "Blog creation failed",
-      details: err.message
-    });
-  }
-});
-
 
 // -------------------------------------------------------------
 // 🔥 EXPORT ROUTER
