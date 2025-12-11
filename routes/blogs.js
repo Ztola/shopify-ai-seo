@@ -25,20 +25,27 @@ router.get("/blogs", async (req, res) => {
     try {
         const blogs = await getAllBlogs();
 
-        // Pour chaque blog → compter les articles
-        const blogsWithCounts = await Promise.all(
+        const blogsWithArticles = await Promise.all(
             blogs.map(async (b) => {
                 const articles = await getArticlesByBlog(b.id);
+
                 return {
                     ...b,
-                    articles_count: articles.length
+                    articles_count: articles.length,
+                    articles: articles.map(a => ({
+                        id: a.id,
+                        title: a.title,
+                        handle: a.handle,
+                        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`,
+                        created_at: a.created_at
+                    }))
                 };
             })
         );
 
         res.json({
             success: true,
-            blogs: blogsWithCounts
+            blogs: blogsWithArticles
         });
 
     } catch (error) {
@@ -46,6 +53,7 @@ router.get("/blogs", async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 /* -------------------------------------------------------------
    🔥 ROUTE 2 : GET /blogs/:blogId/articles
