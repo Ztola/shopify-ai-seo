@@ -12,16 +12,16 @@ app.use(express.json());
 // --------------------------------------------------------------------
 // 🔥 Import des routes
 // --------------------------------------------------------------------
+const shopDataRoute = require("./routes/shop-data");  // ⬅ PRIORITÉ
 const seoRoutes = require("./routes/seo");
 const blogRoutes = require("./routes/blogs");
-const shopDataRoute = require("./routes/shop-data");
 
 // --------------------------------------------------------------------
-// 🔥 Enregistrement des routes AVANT l'écoute du serveur
+// 🔥 Enregistrement des routes dans le BON ordre
 // --------------------------------------------------------------------
+app.use("/api", shopDataRoute);  // ⬅ toujours en premier !
 app.use("/api", seoRoutes);
 app.use("/api", blogRoutes);
-app.use("/api", shopDataRoute);
 
 // --------------------------------------------------------------------
 // 🔥 Route test
