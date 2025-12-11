@@ -203,6 +203,49 @@ router.post("/blogs/auto/stop", (req, res) => {
     });
 });
 
+/* -------------------------------------------------------------
+   🔥 ROUTES AUTOMATION (START / STOP / STATUS)
+-------------------------------------------------------------- */
+
+const {
+    startAutoBlog,
+    stopAutoBlog,
+    getAutoBlogStatus,
+    setAutoBlogConfig
+} = require("../services/auto-blog");
+
+// STATUS
+router.get("/blogs/auto/status", async (req, res) => {
+    const data = await getAutoBlogStatus();
+    res.json({ success: true, ...data });
+});
+
+// START AUTOMATION
+router.post("/blogs/auto/start", async (req, res) => {
+    const { time } = req.body;
+
+    if (!time) {
+        return res.json({ success: false, error: "Missing time" });
+    }
+
+    // Stocke la boutique active dans la config CRON
+    await setAutoBlogConfig({
+        enabled: true,
+        time,
+        shopUrl: req.headers["x-shopify-url"],
+        token: req.headers["x-shopify-token"]
+    });
+
+    startAutoBlog();
+
+    res.json({ success: true });
+});
+
+// STOP AUTOMATION
+router.post("/blogs/auto/stop", async (req, res) => {
+    stopAutoBlog();
+    res.json({ success: true });
+});
 
 
 module.exports = router;
