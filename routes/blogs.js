@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { OpenAI } = require("openai");
 
-// Shopify Services (toutes les fonctions acceptent maintenant req)
+// Shopify Services (req obligatoire dans chaque fonction)
 const {
     getAllBlogs,
     getArticlesByBlog,
@@ -11,9 +11,25 @@ const {
     getProductsByCollection
 } = require("../services/shopify");
 
+// Auto-Blog CRON service
+const {
+    startAutoBlog,
+    stopAutoBlog,
+    updateActiveShopForCron
+} = require("../services/auto-blog");
+
 // IA
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
+});
+
+
+/* -------------------------------------------------------------
+   🔥 MIDDLEWARE → chaque requête met à jour la boutique active
+-------------------------------------------------------------- */
+router.use((req, res, next) => {
+    updateActiveShopForCron(req); // ← CRUCIAL pour autoblog multi-boutiques
+    next();
 });
 
 
@@ -24,7 +40,6 @@ router.get("/blogs", async (req, res) => {
     try {
         console.log("📚 Récupération des blogs pour :", req.headers["x-shopify-url"]);
 
-        // IMPORTANT : on passe req = boutique active !
         const blogs = await getAllBlogs(req);
 
         const blogsWithArticles = await Promise.all(
@@ -33,7 +48,7 @@ router.get("/blogs", async (req, res) => {
 
                 return {
                     ...b,
-                    url_base: req.headers["x-shopify-url"],  // ← CORRIGÉ
+                    url_base: req.headers["x-shopify-url"],
                     articles_count: articles.length,
                     articles: articles.map(a => ({
                         id: a.id,
@@ -57,7 +72,7 @@ router.get("/blogs", async (req, res) => {
 
 
 /* -------------------------------------------------------------
-   🔥 ROUTE 2 : GET /api/blogs/:blogId/articles (MULTI-BOUTIQUES)
+   🔥 ROUTE 2 : GET /api/blogs/:blogId/articles
 -------------------------------------------------------------- */
 router.get("/blogs/:blogId/articles", async (req, res) => {
     try {
@@ -76,7 +91,7 @@ router.get("/blogs/:blogId/articles", async (req, res) => {
 
 
 /* -------------------------------------------------------------
-   🔥 ROUTE 3 : POST /api/blogs/create (MULTI-BOUTIQUES)
+   🔥 ROUTE 3 : POST /api/blogs/create
 -------------------------------------------------------------- */
 router.post("/blogs/create", async (req, res) => {
     try {
@@ -86,7 +101,6 @@ router.post("/blogs/create", async (req, res) => {
             return res.status(400).json({ error: "Missing blogId or topic" });
         }
 
-        // Récup collections de la boutique active
         const collections = await getAllCollections(req);
 
         const relatedCollection =
@@ -94,7 +108,6 @@ router.post("/blogs/create", async (req, res) => {
                 c.title.toLowerCase().includes(topic.toLowerCase())
             ) || collections[0];
 
-        // Produits liés
         const products = await getProductsByCollection(req, relatedCollection.id);
 
         const productHTML = products.slice(0, 4).map(p => `
@@ -112,20 +125,19 @@ router.post("/blogs/create", async (req, res) => {
             </div>
         `;
 
-        // PROMPT IA
         const prompt = `
 Rédige un article SEO de 900 à 1200 mots sur : "${topic}".
 HTML propre uniquement. Pas d’emojis.
-Inclure ce bloc EXACT à la fin :
+
+Ajoute ce bloc EXACT à la fin :
 ${finalHTML}
 
-Réponds UNIQUEMENT avec du JSON :
-
+Réponds uniquement avec du JSON :
 {
   "title": "",
   "content_html": ""
 }
-`;
+        `;
 
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -150,5 +162,47 @@ Réponds UNIQUEMENT avec du JSON :
         res.status(500).json({ success: false, error: error.message });
     }
 });
+
+
+/* -------------------------------------------------------------
+   🔥 AUTOMATISATION QUOTIDIENNE (START / STOP / STATUS)
+-------------------------------------------------------------- */
+
+// GET STATUS
+router.get("/blogs/auto/status", (req, res) => {
+    res.json({
+        success: true,
+        enabled: global.autoBlogEnabled || false,
+        time: global.autoBlogTime || "09:00"
+    });
+});
+
+// START AUTO BLOG
+router.post("/blogs/auto/start", (req, res) => {
+    const { time } = req.body;
+
+    if (!time) {
+        return res.json({ success: false, error: "Missing time" });
+    }
+
+    startAutoBlog(time);
+
+    res.json({
+        success: true,
+        message: "AutoBlog activé",
+        time
+    });
+});
+
+// STOP AUTO BLOG
+router.post("/blogs/auto/stop", (req, res) => {
+    stopAutoBlog();
+    res.json({
+        success: true,
+        message: "AutoBlog désactivé"
+    });
+});
+
+
 
 module.exports = router;
