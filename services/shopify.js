@@ -194,14 +194,17 @@ async function getAllBlogs() {
 }
 
 // ------------------------------------------------------
-// 🔥 ARTICLES DE BLOG (pagination)
+// 🔥 ARTICLES D’UN BLOG — NOUVELLE API SHOPIFY 2024+
 // ------------------------------------------------------
 async function getArticlesByBlog(blogId) {
   let articles = [];
-  let url = `/blogs/${blogId}/articles.json?limit=250`;
+  let url = `/articles.json?blog_id=${blogId}&limit=250`;
 
   while (url) {
     const res = await shopify.get(url);
+
+    if (!res.data.articles) break;
+
     articles = articles.concat(res.data.articles);
 
     const linkHeader = res.headers["link"];
@@ -221,11 +224,14 @@ async function getArticlesByBlog(blogId) {
 }
 
 // ------------------------------------------------------
-// 🔥 Créer un article de blog Shopify
+// 🔥 CRÉER UN ARTICLE (NOUVELLE API SHOPIFY)
 // ------------------------------------------------------
 async function createBlogArticle(blogId, article) {
-  const res = await shopify.post(`/blogs/${blogId}/articles.json`, {
-    article
+  const res = await shopify.post(`/articles.json`, {
+    article: {
+      ...article,
+      blog_id: blogId
+    }
   });
   return res.data.article;
 }
