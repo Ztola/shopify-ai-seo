@@ -436,18 +436,6 @@ router.post("/auto-blog", async (req, res) => {
     const productPrice = product?.variants?.[0]?.price || "";
     const collectionUrl = `${SHOP_URL}/collections/all`;
 
-    // Générer l’article via IA
-    const article = await createBlogArticle({
-      title: topic,
-      prompt: topic,
-      brand: getDynamicBrandName(),
-      collectionUrl,
-      productUrl,
-      productImage,
-      productName: product.title,
-      productPrice
-    });
-
     // Publier l'article sur Shopify
     const created = await axios.post(`${process.env.SERVER_URL}/shopify/create-article`, {
       blogId,
