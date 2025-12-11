@@ -114,31 +114,33 @@ router.post("/blogs/create", async (req, res) => {
 
         // Prompt IA pour générer le blog
         const prompt = `
+const prompt = `
 Tu es un expert en rédaction SEO Shopify.
 
 Rédige un article de blog optimisé de 800 à 1200 mots sur le sujet :
 "${topic}"
 
 INSTRUCTIONS STRICTES :
-- Ton humain + professionnel
-- Pas d’emoji
-- Ajouter une introduction et une conclusion
-- Ajouter H2 + H3
-- Ajouter un lien interne produit : /products/${randomProduct.handle}
-- Ajouter un lien interne collection : /collections/${randomCollection.handle}
-- Ajouter un lien externe fiable (Wikipedia, Ameli ou Inserm)
-- Ajouter un bloc HTML <div class="product-banner"> avec image du produit :
-  <img src="${randomProduct.image?.src}" alt="${randomProduct.title}">
-- Ajouter un CTA orienté conversion en bas de page
-- Ne jamais dire que c'est généré par une IA
-- Pas de markdown, uniquement HTML propre et validé
+- Ton professionnel, humain, expert, pédagogique.
+- Structure ton article en HTML propre (PAS de Markdown).
+- Ajoute une introduction et une conclusion.
+- Ajoute des H2 + H3 clairs et SEO-friendly.
+- Ajoute un lien externe fiable (Wikipedia, Ameli, Inserm).
+- Ne dis JAMAIS que l'article est généré par une IA.
+- Pas d’emojis.
+- HTML propre uniquement.
 
-RENVOIE UNIQUEMENT CE JSON :
+IMPORTANT :
+À la fin de l’article, insère EXACTEMENT ce bloc HTML sans rien modifier :
+
+${fullShowcaseHTML}
+
+RENVOIE UNIQUEMENT CE JSON STRICT :
 {
   "title": "",
   "content_html": ""
 }
-        `;
+`;
 
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
