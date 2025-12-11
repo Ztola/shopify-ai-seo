@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 const { OpenAI } = require("openai");
 
-// Shopify Services (req obligatoire dans chaque fonction)
 const {
     getAllBlogs,
     getArticlesByBlog,
@@ -11,133 +10,99 @@ const {
     getProductsByCollection
 } = require("../services/shopify");
 
-// Auto-Blog CRON service
 const {
     startAutoBlog,
     stopAutoBlog,
-    updateActiveShopForCron
+    getAutoBlogStatus,
+    setAutoBlogConfig,
+    generateAutoBlogArticle
 } = require("../services/auto-blog");
 
-// IA
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-
-/* -------------------------------------------------------------
-   🔥 MIDDLEWARE → chaque requête met à jour la boutique active
--------------------------------------------------------------- */
-router.use((req, res, next) => {
-    updateActiveShopForCron(req); // ← CRUCIAL pour autoblog multi-boutiques
-    next();
-});
-
-
-/* -------------------------------------------------------------
-   🔥 ROUTE 1 : GET /api/blogs (MULTI-BOUTIQUES)
--------------------------------------------------------------- */
+/* ================================================================
+   🟣 1. MODE MANUEL — /api/blogs (list + CRUD)
+================================================================ */
 router.get("/blogs", async (req, res) => {
     try {
-        console.log("📚 Récupération des blogs pour :", req.headers["x-shopify-url"]);
+        const shopUrl = req.headers["x-shopify-url"];
+        console.log("📚 Récupération blogs pour :", shopUrl);
 
         const blogs = await getAllBlogs(req);
 
-        const blogsWithArticles = await Promise.all(
-            blogs.map(async (b) => {
+        const blogsExtended = await Promise.all(
+            blogs.map(async b => {
                 const articles = await getArticlesByBlog(req, b.id);
 
                 return {
                     ...b,
-                    url_base: req.headers["x-shopify-url"],
+                    url_base: shopUrl,
                     articles_count: articles.length,
                     articles: articles.map(a => ({
                         id: a.id,
                         title: a.title,
                         handle: a.handle,
-                        created_at: a.created_at,
-                        url: `https://${req.headers["x-shopify-url"]}/blogs/${b.handle}/${a.handle}`
+                        url: `https://${shopUrl}/blogs/${b.handle}/${a.handle}`,
+                        created_at: a.created_at
                     }))
                 };
             })
         );
 
-        res.json({ success: true, blogs: blogsWithArticles });
+        res.json({ success: true, blogs: blogsExtended });
 
-    } catch (error) {
-        console.error("❌ /blogs ERROR:", error.message);
-        res.status(500).json({ success: false, error: error.message });
+    } catch (err) {
+        console.error("❌ /blogs ERROR:", err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-
-
-/* -------------------------------------------------------------
-   🔥 ROUTE 2 : GET /api/blogs/:blogId/articles
--------------------------------------------------------------- */
-router.get("/blogs/:blogId/articles", async (req, res) => {
-    try {
-        const { blogId } = req.params;
-
-        const articles = await getArticlesByBlog(req, blogId);
-
-        res.json({ success: true, articles });
-
-    } catch (error) {
-        console.error("❌ /blogs/:id/articles ERROR:", error.message);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-
-
-/* -------------------------------------------------------------
-   🔥 ROUTE 3 : POST /api/blogs/create
--------------------------------------------------------------- */
+/* ----------------------------------------------------------------
+   🟣 2. MODE MANUEL — Création article manuel
+---------------------------------------------------------------- */
 router.post("/blogs/create", async (req, res) => {
     try {
         const { blogId, topic, scheduleDate } = req.body;
 
         if (!blogId || !topic) {
-            return res.status(400).json({ error: "Missing blogId or topic" });
+            return res.json({ success: false, error: "Missing parameters" });
         }
 
-        const collections = await getAllCollections(req);
+        // Cherche collection liée
+        const cols = await getAllCollections(req);
+        const match = cols.find(c =>
+            c.title.toLowerCase().includes(topic.toLowerCase())
+        ) || cols[0];
 
-        const relatedCollection =
-            collections.find(c =>
-                c.title.toLowerCase().includes(topic.toLowerCase())
-            ) || collections[0];
+        const products = await getProductsByCollection(req, match.id);
 
-        const products = await getProductsByCollection(req, relatedCollection.id);
-
-        const productHTML = products.slice(0, 4).map(p => `
-            <div class="blog-product-card">
-                <img src="${p?.image?.src || ""}" alt="${p.title}">
-                <h3>${p.title}</h3>
-                <p>${(p.body_html || "").replace(/<[^>]+>/g, "").slice(0, 120)}...</p>
-                <a href="/products/${p.handle}">Voir le produit</a>
-            </div>
-        `).join("");
-
-        const finalHTML = `
-            <div class="blog-products-showcase">
-                ${productHTML}
+        const showcase = `
+            <div class="blog-products">
+                ${products.slice(0, 4).map(p => `
+                    <div class="bp-card">
+                        <img src="${p?.image?.src || ""}">
+                        <h3>${p.title}</h3>
+                        <p>${(p.body_html || "").replace(/<[^>]+>/g, "").slice(0, 120)}...</p>
+                        <a href="/products/${p.handle}">Voir →</a>
+                    </div>
+                `).join("")}
             </div>
         `;
 
         const prompt = `
-Rédige un article SEO de 900 à 1200 mots sur : "${topic}".
-HTML propre uniquement. Pas d’emojis.
+Rédige un article SEO expert (900–1300 mots) sur : "${topic}".
+Structure : H2, H3, paragraphes riches. Pas d’emojis.
+Ajoute CE BLOC EXACT à la fin :
+${showcase}
 
-Ajoute ce bloc EXACT à la fin :
-${finalHTML}
-
-Réponds uniquement avec du JSON :
+Réponds UNIQUEMENT en JSON :
 {
-  "title": "",
-  "content_html": ""
+ "title": "",
+ "content_html": ""
 }
-        `;
+`;
 
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -145,90 +110,39 @@ Réponds uniquement avec du JSON :
             temperature: 0.7
         });
 
-        let output = ai.choices[0].message.content.trim();
-        output = output.replace(/```json|```/g, "");
+        const output = ai.choices[0].message.content.replace(/```json|```/g, "");
         const json = JSON.parse(output);
 
-        const newArticle = await createBlogArticle(req, blogId, {
+        const article = await createBlogArticle(req, blogId, {
             title: json.title,
             body_html: json.content_html,
             published_at: scheduleDate || null
         });
 
-        res.json({ success: true, created: newArticle });
+        res.json({ success: true, created: article });
 
-    } catch (error) {
-        console.error("❌ /blogs/create ERROR:", error.message);
-        res.status(500).json({ success: false, error: error.message });
+    } catch (err) {
+        console.error("❌ /blogs/create ERROR:", err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
+/* ================================================================
+   🔵 3. AUTOMATISATION — Activation, Stop, Statut
+================================================================ */
 
-/* -------------------------------------------------------------
-   🔥 AUTOMATISATION QUOTIDIENNE (START / STOP / STATUS)
--------------------------------------------------------------- */
-
-// GET STATUS
-router.get("/blogs/auto/status", (req, res) => {
-    res.json({
-        success: true,
-        enabled: global.autoBlogEnabled || false,
-        time: global.autoBlogTime || "09:00"
-    });
-});
-
-// START AUTO BLOG
-router.post("/blogs/auto/start", (req, res) => {
-    const { time } = req.body;
-
-    if (!time) {
-        return res.json({ success: false, error: "Missing time" });
-    }
-
-    startAutoBlog(time);
-
-    res.json({
-        success: true,
-        message: "AutoBlog activé",
-        time
-    });
-});
-
-// STOP AUTO BLOG
-router.post("/blogs/auto/stop", (req, res) => {
-    stopAutoBlog();
-    res.json({
-        success: true,
-        message: "AutoBlog désactivé"
-    });
-});
-
-/* -------------------------------------------------------------
-   🔥 ROUTES AUTOMATION (START / STOP / STATUS)
--------------------------------------------------------------- */
-
-const {
-    startAutoBlog,
-    stopAutoBlog,
-    getAutoBlogStatus,
-    setAutoBlogConfig
-} = require("../services/auto-blog");
-
-// STATUS
+/* STATUS */
 router.get("/blogs/auto/status", async (req, res) => {
-    const data = await getAutoBlogStatus();
-    res.json({ success: true, ...data });
+    const status = await getAutoBlogStatus();
+    res.json({ success: true, ...status });
 });
 
-// START AUTOMATION
+/* START */
 router.post("/blogs/auto/start", async (req, res) => {
     const { time } = req.body;
 
-    if (!time) {
-        return res.json({ success: false, error: "Missing time" });
-    }
+    if (!time) return res.json({ success: false, error: "Missing time" });
 
-    // Stocke la boutique active dans la config CRON
     await setAutoBlogConfig({
         enabled: true,
         time,
@@ -237,11 +151,10 @@ router.post("/blogs/auto/start", async (req, res) => {
     });
 
     startAutoBlog();
-
     res.json({ success: true });
 });
 
-// STOP AUTOMATION
+/* STOP */
 router.post("/blogs/auto/stop", async (req, res) => {
     stopAutoBlog();
     res.json({ success: true });
