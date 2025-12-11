@@ -3,40 +3,55 @@ const router = express.Router();
 
 const {
   getAllCollections,
-  getAllProducts,
   getProductsByCollection
 } = require("../services/shopify");
 
-// -------------------------------------------------------------
-// 🔥 Route : /api/shop-data
-// Retourne toutes les collections + produits de la boutique active
-// -------------------------------------------------------------
+/* ===============================================================
+   🔥 Route : GET /api/shop-data
+   → Retourne toutes les collections + leurs produits
+   → Utilise automatiquement la boutique envoyée via headers
+================================================================ */
 router.get("/shop-data", async (req, res) => {
   try {
-    console.log("📦 Shopify: récupération data…");
+    console.log("📦 [shop-data] Récupération des données Shopify…");
 
-    // Le client dynamique se crée automatiquement via req.headers
+    // 1️⃣ Récupération des collections de la boutique active
     const collections = await getAllCollections(req);
+
+    if (!collections || collections.length === 0) {
+      return res.json({
+        success: true,
+        data: { collections: [] }
+      });
+    }
 
     const finalCollections = [];
 
-    for (let c of collections) {
-      const products = await getProductsByCollection(req, c.id);
+    // 2️⃣ Pour chaque collection → récupérer les produits
+    for (let col of collections) {
+      let products = [];
+
+      try {
+        products = await getProductsByCollection(req, col.id);
+      } catch (err) {
+        console.warn("⚠️ Impossible de récupérer les produits de la collection :", col.title);
+      }
 
       finalCollections.push({
-        id: c.id,
-        title: c.title,
-        handle: c.handle,
+        id: col.id,
+        title: col.title,
+        handle: col.handle,
         products: products.map(p => ({
           id: p.id,
           title: p.title,
           handle: p.handle,
-          optimized: false, // WP remplacera plus tard
-        })),
+          optimized: false // WordPress mettra à jour ce champ
+        }))
       });
     }
 
-    res.json({
+    // 3️⃣ Réponse structurée
+    return res.json({
       success: true,
       data: {
         collections: finalCollections
@@ -44,11 +59,11 @@ router.get("/shop-data", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ ERREUR shop-data:", err.message);
+    console.error("❌ ERREUR shop-data.js :", err);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message || "Erreur interne serveur"
     });
   }
 });
