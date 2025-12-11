@@ -13,7 +13,7 @@ const {
 ================================================================ */
 router.get("/shop-data", async (req, res) => {
   try {
-    console.log("📦 [shop-data] Récupération des données Shopify…");
+    console.log("📦 [shop-data] Récupération des données Shopify pour :", req.headers["x-shopify-url"]);
 
     // 1️⃣ Récupération des collections de la boutique active
     const collections = await getAllCollections(req);
@@ -34,7 +34,7 @@ router.get("/shop-data", async (req, res) => {
       try {
         products = await getProductsByCollection(req, col.id);
       } catch (err) {
-        console.warn("⚠️ Impossible de récupérer les produits de la collection :", col.title);
+        console.warn("⚠️ Impossible de récupérer produits pour :", col.title, err.message);
       }
 
       finalCollections.push({
@@ -45,7 +45,10 @@ router.get("/shop-data", async (req, res) => {
           id: p.id,
           title: p.title,
           handle: p.handle,
-          optimized: false // WordPress mettra à jour ce champ
+          created_at: p.created_at,          // 🔥 Date réelle Shopify
+          optimized: false,                  // WordPress changera cela
+          image: p.image || null,            // 🔥 utile pour Blog IA
+          body_html: p.body_html || ""       // 🔥 utile pour IA
         }))
       });
     }
