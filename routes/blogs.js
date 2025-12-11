@@ -8,7 +8,8 @@ const {
     getArticlesByBlog,
     createBlogArticle,
     getAllProducts,
-    getAllCollections
+    getAllCollections,
+    getProductsByCollection
 } = require("../services/shopify");
 
 // OpenAI
