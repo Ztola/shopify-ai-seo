@@ -1,216 +1,177 @@
-const express = require("express");
-const router = express.Router();
-const { OpenAI } = require("openai");
+const axios = require("axios");
 
-// Shopify Services
-const {
-    getAllBlogs,
-    getArticlesByBlog,
-    createBlogArticle,
-    getAllProducts,
-    getAllCollections,
-    getProductsByCollection
-} = require("../services/shopify");
+// ------------------------------------------------------
+// DEBUG URL AU DÉMARRAGE
+// ------------------------------------------------------
+console.log(
+  "🔍 Shopify API Test:",
+  `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products.json`
+);
 
-// OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+// ------------------------------------------------------
+// INSTANCE SHOPIFY
+// ------------------------------------------------------
+const shopify = axios.create({
+  baseURL: `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01`,
+  headers: {
+    "X-Shopify-Access-Token": process.env.SHOPIFY_ACCESS_TOKEN,
+    "Content-Type": "application/json"
+  }
 });
 
-/* -------------------------------------------------------------
-   🔥 ROUTE 1 : GET /blogs
-   Récupère tous les blogs Shopify
--------------------------------------------------------------- */
-router.get("/blogs", async (req, res) => {
-    try {
-        const blogs = await getAllBlogs();
-
-        const blogsWithArticles = await Promise.all(
-            blogs.map(async (b) => {
-                const articles = await getArticlesByBlog(b.id);
-
-                return {
-                    ...b,
-                    articles_count: articles.length,
-                    articles: articles.map(a => ({
-                        id: a.id,
-                        title: a.title,
-                        handle: a.handle,
-                        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`,
-                        created_at: a.created_at
-                    }))
-                };
-            })
-        );
-
-        res.json({
-            success: true,
-            blogs: blogsWithArticles
-        });
-
-    } catch (error) {
-        console.error("❌ Error /blogs", error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-
-/* -------------------------------------------------------------
-   🔥 ROUTE 2 : GET /blogs/:blogId/articles
-   Récupère les articles d’un blog
--------------------------------------------------------------- */
-router.get("/blogs/:blogId/articles", async (req, res) => {
-    try {
-        const { blogId } = req.params;
-        const articles = await getArticlesByBlog(blogId);
-        res.json({ success: true, articles });
-    } catch (error) {
-        console.error("❌ Error /articles", error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-/* -------------------------------------------------------------
-   🔥 ROUTE 3 : POST /blogs/create
-   Crée un article automatique avec IA + produits liés
--------------------------------------------------------------- */
-router.post("/blogs/create", async (req, res) => {
-    try {
-        const { blogId, topic, scheduleDate } = req.body;
-
-        if (!blogId || !topic) {
-            return res.status(400).json({ error: "Missing blogId or topic" });
-        }
-
-        // Récupération produits + collections
-        const products = await getAllProducts();
-        const collections = await getAllCollections();
-
-        // Trouver la collection la plus liée au sujet
-        const relatedCollection =
-            collections.find(c =>
-                c.title.toLowerCase().includes(topic.toLowerCase())
-            ) || collections[0];
-
-        // Produits de la collection
-        const collectionProducts = await getProductsByCollection(relatedCollection.id);
-
-        /* ------------------------------------------------------------------
-           🔥 Génération du bloc HTML visuel premium (4 produits max)
-        ------------------------------------------------------------------ */
-        const productGridHTML = collectionProducts.slice(0, 4).map(p => `
-            <div class="blog-product-card">
-                <div class="blog-product-badge">Promo</div>
-                <div class="blog-product-image-wrapper">
-                    <img 
-                        src="${p?.image?.src || ''}" 
-                        alt="${p.title}"
-                        class="blog-product-image"
-                    >
-                </div>
-                <div class="blog-product-content">
-                    <h3 class="blog-product-title">${p.title}</h3>
-                    <p class="blog-product-description">
-                        ${(p.body_html || "")
-                            .replace(/<[^>]*>?/gm, "")
-                            .slice(0, 120)
-                        }...
-                    </p>
-                    <div class="blog-product-footer">
-                        <div>
-                            <span class="blog-product-price">${p?.variants?.[0]?.price || ""} €</span>
-                        </div>
-                        <a href="/products/${p.handle}" class="blog-product-cta">
-                            Voir le produit
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                <polyline points="12 5 19 12 12 19"></polyline>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        `).join("");
-
-        const fullShowcaseHTML = `
-            <div class="blog-products-showcase">
-                <div class="blog-products-header">
-                    <h2 class="blog-products-title">Produits Recommandés</h2>
-                    <p class="blog-products-subtitle">Découvrez nos produits en lien avec cet article</p>
-                </div>
-
-                <div class="blog-products-grid">
-                    ${productGridHTML}
-                </div>
-            </div>
-        `;
-
-        /* ------------------------------------------------------------------
-           🔥 PROMPT IA FINAL
-        ------------------------------------------------------------------ */
-        const prompt = `
-Tu es un expert en rédaction SEO Shopify.
-
-Rédige un article de blog optimisé de 800 à 1200 mots sur le sujet :
-"${topic}"
-
-INSTRUCTIONS STRICTES :
-- Ton professionnel, humain, expert, pédagogique.
-- Structure ton article en HTML propre (PAS de Markdown).
-- Ajoute une introduction et une conclusion.
-- Ajoute des H2 + H3 clairs et optimisés SEO.
-- Ajoute un lien externe fiable (Wikipedia, Ameli, Inserm).
-- Ne dis jamais que l’article est généré par une IA.
-- Pas d’emojis.
-- HTML propre uniquement.
-
-IMPORTANT :
-À la fin de l’article, insère EXACTEMENT ce bloc HTML sans rien modifier :
-
-${fullShowcaseHTML}
-
-RENVOIE UNIQUEMENT CE JSON STRICT :
-{
-  "title": "",
-  "content_html": ""
+// ------------------------------------------------------
+// AUTO RATE-LIMIT
+// ------------------------------------------------------
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
-`;
 
-        /* ------------------------------------------------------------------
-           🔥 APPEL OPENAI
-        ------------------------------------------------------------------ */
-        const ai = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.7,
-        });
+let lastCall = 0;
+const MIN_DELAY = 500;
 
-        let output = ai.choices[0].message.content.trim();
-        output = output.replace(/```json|```/g, "").trim();
-
-        const json = JSON.parse(output);
-
-        /* ------------------------------------------------------------------
-           🔥 CRÉATION SUR SHOPIFY
-        ------------------------------------------------------------------ */
-        const newArticle = {
-            title: json.title,
-            body_html: json.content_html,
-            published_at: scheduleDate || null
-        };
-
-        const created = await createBlogArticle(blogId, newArticle);
-
-        res.json({
-            success: true,
-            message: "Article généré avec bloc produits premium",
-            created
-        });
-
-    } catch (error) {
-        console.error("❌ Error /blogs/create", error);
-        res.status(500).json({ error: error.message });
-    }
+shopify.interceptors.request.use(async config => {
+  const now = Date.now();
+  if (now - lastCall < MIN_DELAY) {
+    await wait(MIN_DELAY - (now - lastCall));
+  }
+  lastCall = Date.now();
+  return config;
 });
 
-module.exports = router;
+// ------------------------------------------------------
+// PRODUITS
+// ------------------------------------------------------
+async function getProductById(id) {
+  const res = await shopify.get(`/products/${id}.json`);
+  return res.data.product;
+}
+
+async function getProductCollection(productId) {
+  const collects = await shopify.get(`/collects.json?product_id=${productId}`);
+
+  if (!collects.data.collects?.length) return null;
+
+  const collectionId = collects.data.collects[0].collection_id;
+  const collection = await shopify.get(`/collections/${collectionId}.json`);
+
+  return collection.data.collection;
+}
+
+async function updateProduct(id, data) {
+  return shopify.put(`/products/${id}.json`, {
+    product: {
+      id,
+      title: data.title,
+      body_html: data.body_html,
+      handle: data.handle
+    }
+  });
+}
+
+async function markAsOptimized(productId) {
+  // tag + metafield
+  const res = await shopify.get(`/products/${productId}.json`);
+  const product = res.data.product;
+
+  let tags = product.tags ? product.tags.split(",").map(t => t.trim()) : [];
+  if (!tags.includes("optimized")) tags.push("optimized");
+
+  await shopify.put(`/products/${productId}.json`, {
+    product: { id: productId, tags: tags.join(", ") }
+  });
+
+  await shopify.post(`/metafields.json`, {
+    metafield: {
+      namespace: "ai_seo",
+      key: "optimized",
+      value: "true",
+      type: "single_line_text_field",
+      owner_resource: "product",
+      owner_id: productId
+    }
+  });
+}
+
+async function isAlreadyOptimized(productId) {
+  const res = await shopify.get(`/products/${productId}/metafields.json`);
+  return res.data.metafields.some(
+    (m) => m.namespace === "ai_seo" && m.key === "optimized" && m.value === "true"
+  );
+}
+
+async function getAllProducts() {
+  let products = [];
+  let url = `/products.json?limit=250`;
+
+  while (url) {
+    const res = await shopify.get(url);
+    products = products.concat(res.data.products);
+
+    const link = res.headers["link"];
+    if (link && link.includes('rel="next"')) {
+      url = link
+        .split(",")
+        .find(s => s.includes('rel="next"'))
+        .match(/<(.+?)>/)[1]
+        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
+    } else {
+      url = null;
+    }
+  }
+
+  return products;
+}
+
+async function getAllCollections() {
+  const custom = await shopify.get(`/custom_collections.json?limit=250`);
+  const smart = await shopify.get(`/smart_collections.json?limit=250`);
+  return [...custom.data.custom_collections, ...smart.data.smart_collections];
+}
+
+async function getProductsByCollection(collectionId) {
+  const res = await shopify.get(`/collections/${collectionId}/products.json?limit=250`);
+  return res.data.products || [];
+}
+
+// ------------------------------------------------------
+// BLOGS
+// ------------------------------------------------------
+async function getAllBlogs() {
+  const res = await shopify.get(`/blogs.json`);
+  return res.data.blogs;
+}
+
+// ------------------------------------------------------
+// ARTICLES (nouvelle API Shopify 2025)
+// ------------------------------------------------------
+async function getArticlesByBlog(blogId) {
+  const res = await shopify.get(`/articles.json?blog_id=${blogId}&limit=250`);
+  return res.data.articles || [];
+}
+
+// ------------------------------------------------------
+// CRÉATION ARTICLE
+// ------------------------------------------------------
+async function createBlogArticle(blogId, article) {
+  const res = await shopify.post(`/blogs/${blogId}/articles.json`, {
+    article
+  });
+  return res.data.article;
+}
+
+// ------------------------------------------------------
+// EXPORT
+// ------------------------------------------------------
+module.exports = {
+  getProductById,
+  getProductCollection,
+  updateProduct,
+  markAsOptimized,
+  isAlreadyOptimized,
+  getAllProducts,
+  getAllCollections,
+  getProductsByCollection,
+  getAllBlogs,
+  getArticlesByBlog,
+  createBlogArticle
+};
