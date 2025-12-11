@@ -368,7 +368,6 @@ INTRODUCTION (3–5 phrases) :
 <h2>Sources fiables et informations externes</h2>
 <p>
 Inclure un lien externe FIABLE et PERTINENT parmi :  
-<a href="https://www.ameli.fr" target="_blank">Ameli</a>,
 <a href="https://fr.wikipedia.org" target="_blank">Wikipédia</a>,
 <a href="https://www.inserm.fr" target="_blank">Inserm</a>,
 <a href="https://www.futura-sciences.com" target="_blank">Futura Sciences</a>.
@@ -403,6 +402,24 @@ Proposer subtilement le produit comme solution naturelle : <a href="${productUrl
 
   return JSON.parse(raw);
 }
+
+   // -----------------------------------------
+    // 5️⃣ RÉPONSE FINALE
+    // -----------------------------------------
+    return res.json({
+      success: true,
+      article: shopifyRes.data.article
+    });
+
+  } catch (err) {
+    console.error("❌ Error /auto-blog", err);
+    res.status(500).json({
+      success: false,
+      error: "Blog creation failed",
+      details: err.message
+    });
+  }
+});
 
 // -------------------------------------------------------------
 // 🔥 EXPORT ROUTER
