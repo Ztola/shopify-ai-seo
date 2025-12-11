@@ -48,7 +48,7 @@ router.get("/blogs/:blogId/articles", async (req, res) => {
 
 /* -------------------------------------------------------------
    🔥 ROUTE 3 : POST /blogs/create
-   Crée un article automatique avec IA + Shopify
+   Crée un article automatique avec IA + produits liés
 -------------------------------------------------------------- */
 router.post("/blogs/create", async (req, res) => {
     try {
@@ -62,14 +62,18 @@ router.post("/blogs/create", async (req, res) => {
         const products = await getAllProducts();
         const collections = await getAllCollections();
 
-        // Trouver une collection liée au sujet du blog
-        const relatedCollection = collections.find(c =>
-            c.title.toLowerCase().includes(topic.toLowerCase())
-        ) || collections[0];
+        // Trouver la collection la plus liée au sujet
+        const relatedCollection =
+            collections.find(c =>
+                c.title.toLowerCase().includes(topic.toLowerCase())
+            ) || collections[0];
 
+        // Produits de la collection
         const collectionProducts = await getProductsByCollection(relatedCollection.id);
 
-        // Générer le bloc HTML premium
+        /* ------------------------------------------------------------------
+           🔥 Génération du bloc HTML visuel premium (4 produits max)
+        ------------------------------------------------------------------ */
         const productGridHTML = collectionProducts.slice(0, 4).map(p => `
             <div class="blog-product-card">
                 <div class="blog-product-badge">Promo</div>
@@ -82,10 +86,15 @@ router.post("/blogs/create", async (req, res) => {
                 </div>
                 <div class="blog-product-content">
                     <h3 class="blog-product-title">${p.title}</h3>
-                    <p class="blog-product-description">${p.body_html.replace(/<[^>]*>?/gm, '').slice(0,120)}...</p>
+                    <p class="blog-product-description">
+                        ${(p.body_html || "")
+                            .replace(/<[^>]*>?/gm, "")
+                            .slice(0, 120)
+                        }...
+                    </p>
                     <div class="blog-product-footer">
                         <div>
-                            <span class="blog-product-price">${p?.variants?.[0]?.price || ''} €</span>
+                            <span class="blog-product-price">${p?.variants?.[0]?.price || ""} €</span>
                         </div>
                         <a href="/products/${p.handle}" class="blog-product-cta">
                             Voir le produit
@@ -112,9 +121,10 @@ router.post("/blogs/create", async (req, res) => {
             </div>
         `;
 
-        // Prompt IA pour générer le blog
+        /* ------------------------------------------------------------------
+           🔥 PROMPT IA FINAL
+        ------------------------------------------------------------------ */
         const prompt = `
-const prompt = `
 Tu es un expert en rédaction SEO Shopify.
 
 Rédige un article de blog optimisé de 800 à 1200 mots sur le sujet :
@@ -124,9 +134,9 @@ INSTRUCTIONS STRICTES :
 - Ton professionnel, humain, expert, pédagogique.
 - Structure ton article en HTML propre (PAS de Markdown).
 - Ajoute une introduction et une conclusion.
-- Ajoute des H2 + H3 clairs et SEO-friendly.
+- Ajoute des H2 + H3 clairs et optimisés SEO.
 - Ajoute un lien externe fiable (Wikipedia, Ameli, Inserm).
-- Ne dis JAMAIS que l'article est généré par une IA.
+- Ne dis jamais que l’article est généré par une IA.
 - Pas d’emojis.
 - HTML propre uniquement.
 
@@ -142,6 +152,9 @@ RENVOIE UNIQUEMENT CE JSON STRICT :
 }
 `;
 
+        /* ------------------------------------------------------------------
+           🔥 APPEL OPENAI
+        ------------------------------------------------------------------ */
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
@@ -153,10 +166,13 @@ RENVOIE UNIQUEMENT CE JSON STRICT :
 
         const json = JSON.parse(output);
 
+        /* ------------------------------------------------------------------
+           🔥 CRÉATION SUR SHOPIFY
+        ------------------------------------------------------------------ */
         const newArticle = {
             title: json.title,
             body_html: json.content_html,
-            published_at: scheduleDate ?? null
+            published_at: scheduleDate || null
         };
 
         const created = await createBlogArticle(blogId, newArticle);
