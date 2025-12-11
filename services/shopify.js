@@ -244,4 +244,5 @@ module.exports = {
   getProductsByCollection,
   getAllBlogs,
   getArticlesByBlog
+  createBlogArticle
 };
