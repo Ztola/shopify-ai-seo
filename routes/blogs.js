@@ -1,165 +1,105 @@
-const express = require("express");
-const router = express.Router();
-const { OpenAI } = require("openai");
-
-const {
-    getAllBlogs,
-    getArticlesByBlog,
-    createBlogArticle,
-    getAllProducts,
+// auto-blog.js
+const fs = require("fs");
+const path = require("path");
+const cron = require("node-cron");
+const { 
     getAllCollections,
-    getProductsByCollection
-} = require("../services/shopify");
+    getProductsByCollection,
+    createBlogArticle
+} = require("./services/shopify");
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const { OpenAI } = require("openai");
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-/* -------------------------------------------------------------
-   GET /blogs
--------------------------------------------------------------- */
-router.get("/blogs", async (req, res) => {
-    try {
-        const blogs = await getAllBlogs();
+// Fichier de configuration
+const configPath = path.join(__dirname, "auto-blog-config.json");
 
-        const blogsWithArticles = await Promise.all(
-            blogs.map(async (b) => {
-                const articles = await getArticlesByBlog(b.id);
-                return {
-    ...b,
-    url_base: process.env.SHOPIFY_SHOP_URL, // 👈 Ajout important
-    articles_count: articles.length,
-    articles: articles.map(a => ({
-        id: a.id,
-        title: a.title,
-        handle: a.handle,
-        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`,
-        created_at: a.created_at
-    }))
-};
-            })
-        );
-
-        res.json({ success: true, blogs: blogsWithArticles });
-
-    } catch (error) {
-        console.error("❌ Error /blogs", error);
-        res.status(500).json({ error: error.message });
+// Charger ou créer config
+function loadConfig() {
+    if (!fs.existsSync(configPath)) {
+        fs.writeFileSync(configPath, JSON.stringify({
+            enabled: false,
+            time: "09:00",
+            last_run: null
+        }, null, 2));
     }
-});
-
-/* -------------------------------------------------------------
-   GET /blogs/:blogId/articles
--------------------------------------------------------------- */
-router.get("/blogs/:blogId/articles", async (req, res) => {
-    try {
-        const { blogId } = req.params;
-        const articles = await getArticlesByBlog(blogId);
-
-        res.json({ success: true, articles });
-
-    } catch (error) {
-        console.error("❌ Error /blogs/:blogId/articles", error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-/* -------------------------------------------------------------
-   POST /blogs/create
--------------------------------------------------------------- */
-router.post("/blogs/create", async (req, res) => {
-    try {
-        const { blogId, topic, scheduleDate } = req.body;
-
-        if (!blogId || !topic) {
-            return res.status(400).json({ error: "Missing blogId or topic" });
-        }
-
-        // Produits & collections
-        const collections = await getAllCollections();
-        const products = await getAllProducts();
-
-        // Choisir une collection liée
-        const relatedCollection =
-            collections.find(c =>
-                c.title.toLowerCase().includes(topic.toLowerCase())
-            ) || collections[0];
-
-        const collectionProducts = await getProductsByCollection(relatedCollection.id);
-
-        // Bloc HTML produits
-        const productGridHTML = collectionProducts.slice(0, 4).map(p => `
-            <div class="blog-product-card">
-                <div class="blog-product-badge">Promo</div>
-                <div class="blog-product-image-wrapper">
-                    <img src="${p?.image?.src || ''}" class="blog-product-image">
-                </div>
-                <div class="blog-product-content">
-                    <h3>${p.title}</h3>
-                    <p>${(p.body_html || '').replace(/<[^>]*>/g, '').slice(0,120)}...</p>
-                    <a href="/products/${p.handle}" class="blog-product-cta">Voir</a>
-                </div>
-            </div>
-        `).join("");
-
-        const fullShowcaseHTML = `
-            <div class="blog-products-showcase">
-                <h2>Produits recommandés</h2>
-                <div class="blog-products-grid">${productGridHTML}</div>
-            </div>
-        `;
-
-        // Prompt IA
-        const prompt = `
-Tu es un expert en rédaction SEO Shopify.
-
-Rédige un article de 800-1200 mots sur :
-"${topic}"
-
-Règles :
-- HTML propre (pas de Markdown)
-- H2 / H3 optimisés SEO
-- Introduction + Conclusion
-- Un lien externe fiable (Wikipedia / Ameli / Inserm)
-- Jamais dire que c’est généré par IA
-- Pas d’emojis
-
-À la FIN de l’article, insère ce bloc sans modification :
-
-${fullShowcaseHTML}
-
-Retourne UNIQUEMENT ce JSON :
-{
-  "title": "",
-  "content_html": ""
+    return JSON.parse(fs.readFileSync(configPath));
 }
+
+// Sauver config
+function saveConfig(data) {
+    fs.writeFileSync(configPath, JSON.stringify(data, null, 2));
+}
+
+// CRON actif ?
+let cronTask = null;
+
+// Fonction principale : générer un article
+async function generateDailyArticle() {
+    try {
+        console.log("📝 Génération automatique du blog…");
+
+        const config = loadConfig();
+        const collections = await getAllCollections();
+        const chosenCollection = collections[Math.floor(Math.random() * collections.length)];
+
+        // Récup produit collection
+        const products = await getProductsByCollection(chosenCollection.id);
+        const keyword = chosenCollection.title;
+
+        // Structure du prompt
+        const prompt = `
+Tu es expert SEO Shopify. Rédige un article optimisé sur : "${keyword}".
+HTML propre, 800-1200 mots, H2/H3, pas d’emoji.
 `;
 
+        // Génération IA
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             temperature: 0.7,
             messages: [{ role: "user", content: prompt }]
         });
 
-        let output = ai.choices[0].message.content.trim();
-        output = output.replace(/```json|```/g, "").trim();
+        const raw = ai.choices[0].message.content.trim();
+        const json = JSON.parse(raw.replace(/```json|```/g, ""));
 
-        const json = JSON.parse(output);
+        // Publier article
+        const newArticle = await createBlogArticle(
+            process.env.AUTO_BLOG_ID, // 🔥 ID du blog cible défini dans .env
+            {
+                title: json.title,
+                body_html: json.content_html
+            }
+        );
 
-        const newArticle = {
-            title: json.title,
-            body_html: json.content_html,
-            published_at: scheduleDate || null
-        };
+        config.last_run = new Date().toISOString();
+        saveConfig(config);
 
-        const created = await createBlogArticle(blogId, newArticle);
+        console.log("✔ Article automatique publié !");
+        return newArticle;
 
-        res.json({ success: true, created });
-
-    } catch (error) {
-        console.error("❌ Error /blogs/create", error);
-        res.status(500).json({ error: error.message });
+    } catch (err) {
+        console.error("❌ Erreur CRON :", err.message);
     }
-});
+}
 
-module.exports = router;
+// Démarrer le CRON
+function startCron() {
+    const config = loadConfig();
+
+    if (!config.enabled) return;
+
+    const [hour, minute] = config.time.split(":");
+
+    console.log(`⏰ CRON actif -> Tous les jours à ${config.time}`);
+
+    cronTask = cron.schedule(`${minute} ${hour} * * *`, generateDailyArticle);
+}
+
+// Export
+module.exports = {
+    loadConfig,
+    saveConfig,
+    startCron,
+    generateDailyArticle
+};
