@@ -57,13 +57,59 @@ router.post("/blogs/create", async (req, res) => {
             return res.status(400).json({ error: "Missing blogId or topic" });
         }
 
-        // Récupération produits / collections
+        // Récupération produits + collections
         const products = await getAllProducts();
         const collections = await getAllCollections();
 
-        // Choisir un produit pertinent pour le maillage interne
-        const randomProduct = products[Math.floor(Math.random() * products.length)];
-        const randomCollection = collections[Math.floor(Math.random() * collections.length)];
+        // Trouver une collection liée au sujet du blog
+        const relatedCollection = collections.find(c =>
+            c.title.toLowerCase().includes(topic.toLowerCase())
+        ) || collections[0];
+
+        const collectionProducts = await getProductsByCollection(relatedCollection.id);
+
+        // Générer le bloc HTML premium
+        const productGridHTML = collectionProducts.slice(0, 4).map(p => `
+            <div class="blog-product-card">
+                <div class="blog-product-badge">Promo</div>
+                <div class="blog-product-image-wrapper">
+                    <img 
+                        src="${p?.image?.src || ''}" 
+                        alt="${p.title}"
+                        class="blog-product-image"
+                    >
+                </div>
+                <div class="blog-product-content">
+                    <h3 class="blog-product-title">${p.title}</h3>
+                    <p class="blog-product-description">${p.body_html.replace(/<[^>]*>?/gm, '').slice(0,120)}...</p>
+                    <div class="blog-product-footer">
+                        <div>
+                            <span class="blog-product-price">${p?.variants?.[0]?.price || ''} €</span>
+                        </div>
+                        <a href="/products/${p.handle}" class="blog-product-cta">
+                            Voir le produit
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <polyline points="12 5 19 12 12 19"></polyline>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `).join("");
+
+        const fullShowcaseHTML = `
+            <div class="blog-products-showcase">
+                <div class="blog-products-header">
+                    <h2 class="blog-products-title">Produits Recommandés</h2>
+                    <p class="blog-products-subtitle">Découvrez nos produits en lien avec cet article</p>
+                </div>
+
+                <div class="blog-products-grid">
+                    ${productGridHTML}
+                </div>
+            </div>
+        `;
 
         // Prompt IA pour générer le blog
         const prompt = `
@@ -102,7 +148,7 @@ RENVOIE UNIQUEMENT CE JSON :
         let output = ai.choices[0].message.content.trim();
         output = output.replace(/```json|```/g, "").trim();
 
-        let json = JSON.parse(output);
+        const json = JSON.parse(output);
 
         const newArticle = {
             title: json.title,
@@ -114,7 +160,7 @@ RENVOIE UNIQUEMENT CE JSON :
 
         res.json({
             success: true,
-            message: "Article généré et envoyé à Shopify",
+            message: "Article généré avec bloc produits premium",
             created
         });
 
