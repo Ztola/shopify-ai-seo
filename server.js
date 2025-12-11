@@ -9,24 +9,30 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔥 Import des routes SEO
+// --------------------------------------------------------------------
+// 🔥 Import des routes
+// --------------------------------------------------------------------
 const seoRoutes = require("./routes/seo");
-
-// 🔥 Import des routes Blog (NOUVEAU)
 const blogRoutes = require("./routes/blogs");
+const shopDataRoute = require("./routes/shop-data");
 
-// Toutes les routes API commencent ici
+// --------------------------------------------------------------------
+// 🔥 Enregistrement des routes AVANT l'écoute du serveur
+// --------------------------------------------------------------------
 app.use("/api", seoRoutes);
-
-// 👉 Ajout des routes Blog
 app.use("/api", blogRoutes);
+app.use("/api", shopDataRoute);
 
-// Route test
+// --------------------------------------------------------------------
+// 🔥 Route test
+// --------------------------------------------------------------------
 app.get("/", (req, res) => {
   res.send("🔥 Shopify AI SEO Server is running!");
 });
 
-// PORT Render obligatoire
+// --------------------------------------------------------------------
+// 🔥 Lancement du serveur
+// --------------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
