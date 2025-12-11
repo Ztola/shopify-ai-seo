@@ -24,7 +24,23 @@ const openai = new OpenAI({
 router.get("/blogs", async (req, res) => {
     try {
         const blogs = await getAllBlogs();
-        res.json({ success: true, blogs });
+
+        // Pour chaque blog → compter les articles
+        const blogsWithCounts = await Promise.all(
+            blogs.map(async (b) => {
+                const articles = await getArticlesByBlog(b.id);
+                return {
+                    ...b,
+                    articles_count: articles.length
+                };
+            })
+        );
+
+        res.json({
+            success: true,
+            blogs: blogsWithCounts
+        });
+
     } catch (error) {
         console.error("❌ Error /blogs", error);
         res.status(500).json({ error: error.message });
