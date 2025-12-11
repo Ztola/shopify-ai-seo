@@ -143,7 +143,7 @@ Introduction présentant le bénéfice principal, incluant deux liens internes :
 <p>
 Ajoute un lien interne obligatoire vers un produit recommandé.
 </p>
-Description centrée sur le confort, le soutien, l'élégance et l’usage quotidien.
+Description centrée sur le confort, le soutien, l'élégance et l'usage quotidien.
 </p>
 
 <h3>Redécouvrez le confort et la stabilité avec les <strong>{{PRODUCT_NAME}}™</strong></h3>
@@ -215,6 +215,7 @@ ${productsWithUrls.map(p => `- ${p.title} : ${p.url}`).join("\n")}
     res.status(500).json({ error: "Optimize error", details: err.message });
   }
 });
+
 
 // -------------------------------------------------------------
 // 🔥 ROUTE 3 — OPTIMISATION D’UNE COLLECTION
@@ -385,10 +386,10 @@ Proposer subtilement le produit comme solution naturelle : <a href="${productUrl
 ────────────────────────────────────────
 📌 FORMAT DE SORTIE JSON STRICT :
 ────────────────────────────────────────
-{
+\{
   "title": "",
   "html": ""
-}
+\}
 `;
 
   const ai = await openai.chat.completions.create({
@@ -403,23 +404,6 @@ Proposer subtilement le produit comme solution naturelle : <a href="${productUrl
   return JSON.parse(raw);
 }
 
-   // -----------------------------------------
-    // 5️⃣ RÉPONSE FINALE
-    // -----------------------------------------
-    return res.json({
-      success: true,
-      article: shopifyRes.data.article
-    });
-
-  } catch (err) {
-    console.error("❌ Error /auto-blog", err);
-    res.status(500).json({
-      success: false,
-      error: "Blog creation failed",
-      details: err.message
-    });
-  }
-});
 
 // -------------------------------------------------------------
 // 🔥 EXPORT ROUTER
