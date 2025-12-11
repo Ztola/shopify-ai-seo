@@ -19,7 +19,6 @@ const openai = new OpenAI({
 
 /* -------------------------------------------------------------
    🔥 ROUTE 1 : GET /blogs
-   Récupère tous les blogs Shopify
 -------------------------------------------------------------- */
 router.get("/blogs", async (req, res) => {
     try {
@@ -28,7 +27,6 @@ router.get("/blogs", async (req, res) => {
         const blogsWithArticles = await Promise.all(
             blogs.map(async (b) => {
                 const articles = await getArticlesByBlog(b.id);
-
                 return {
                     ...b,
                     url_base: process.env.SHOPIFY_SHOP_URL,
@@ -37,28 +35,22 @@ router.get("/blogs", async (req, res) => {
                         id: a.id,
                         title: a.title,
                         handle: a.handle,
-                        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`,
-                        created_at: a.created_at
+                        created_at: a.created_at,
+                        url: `https://${process.env.SHOPIFY_SHOP_URL}/blogs/${b.handle}/${a.handle}`
                     }))
                 };
             })
         );
 
-        res.json({
-            success: true,
-            blogs: blogsWithArticles
-        });
+        res.json({ success: true, blogs: blogsWithArticles });
 
     } catch (error) {
-        console.error("❌ Error /blogs", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-
 /* -------------------------------------------------------------
    🔥 ROUTE 2 : GET /blogs/:blogId/articles
-   Récupère les articles d’un blog
 -------------------------------------------------------------- */
 router.get("/blogs/:blogId/articles", async (req, res) => {
     try {
@@ -66,15 +58,12 @@ router.get("/blogs/:blogId/articles", async (req, res) => {
         const articles = await getArticlesByBlog(blogId);
         res.json({ success: true, articles });
     } catch (error) {
-        console.error("❌ Error /articles", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-
 /* -------------------------------------------------------------
    🔥 ROUTE 3 : POST /blogs/create
-   Crée un article automatique avec IA + produits liés
 -------------------------------------------------------------- */
 router.post("/blogs/create", async (req, res) => {
     try {
@@ -84,146 +73,77 @@ router.post("/blogs/create", async (req, res) => {
             return res.status(400).json({ error: "Missing blogId or topic" });
         }
 
-        // Récupération produits + collections
-        const products = await getAllProducts();
         const collections = await getAllCollections();
-
-        // Trouver la collection la plus liée au sujet
         const relatedCollection =
             collections.find(c =>
                 c.title.toLowerCase().includes(topic.toLowerCase())
             ) || collections[0];
 
-        // Produits de la collection
-        const collectionProducts = await getProductsByCollection(relatedCollection.id);
+        const products = await getProductsByCollection(relatedCollection.id);
 
-        /* ------------------------------------------------------------------
-           🔥 Génération du bloc HTML visuel premium (4 produits max)
-        ------------------------------------------------------------------ */
-        const productGridHTML = collectionProducts.slice(0, 4).map(p => `
+        // Génération produits HTML
+        const productHTML = products.slice(0, 4).map(p => `
             <div class="blog-product-card">
-                <div class="blog-product-badge">Promo</div>
-                <div class="blog-product-image-wrapper">
-                    <img 
-                        src="${p?.image?.src || ''}" 
-                        alt="${p.title}"
-                        class="blog-product-image"
-                    >
-                </div>
-                <div class="blog-product-content">
-                    <h3 class="blog-product-title">${p.title}</h3>
-                    <p class="blog-product-description">
-                        ${(p.body_html || "")
-                            .replace(/<[^>]*>?/gm, "")
-                            .slice(0, 120)
-                        }...
-                    </p>
-                    <div class="blog-product-footer">
-                        <div>
-                            <span class="blog-product-price">${p?.variants?.[0]?.price || ""} €</span>
-                        </div>
-                        <a href="/products/${p.handle}" class="blog-product-cta">
-                            Voir le produit
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                                <polyline points="12 5 19 12 12 19"></polyline>
-                            </svg>
-                        </a>
-                    </div>
-                </div>
+                <img src="${p?.image?.src || ""}" alt="${p.title}">
+                <h3>${p.title}</h3>
+                <p>${(p.body_html || "").replace(/<[^>]+>/g, "").slice(0, 120)}...</p>
+                <a href="/products/${p.handle}">Voir le produit</a>
             </div>
         `).join("");
 
-        const fullShowcaseHTML = `
+        const showcaseHTML = `
             <div class="blog-products-showcase">
-                <div class="blog-products-header">
-                    <h2 class="blog-products-title">Produits Recommandés</h2>
-                    <p class="blog-products-subtitle">Découvrez nos produits en lien avec cet article</p>
-                </div>
-
-                <div class="blog-products-grid">
-                    ${productGridHTML}
-                </div>
+                ${productHTML}
             </div>
         `;
 
-        /* ------------------------------------------------------------------
-           🔥 PROMPT IA FINAL — NE PAS MODIFIER
-        ------------------------------------------------------------------ */
+        // Prompt IA
         const prompt = `
-Tu es un expert en rédaction SEO Shopify.
+Rédige un article SEO de 800-1200 mots sur : "${topic}".
+HTML propre uniquement. Pas d’emojis.
 
-Rédige un article de blog optimisé de 800 à 1200 mots sur le sujet :
-"${topic}"
+Ajoute ce bloc EXACT à la fin :
+${showcaseHTML}
 
-INSTRUCTIONS STRICTES :
-- Ton professionnel, humain, expert, pédagogique.
-- Structure ton article en HTML propre (PAS de Markdown).
-- Ajoute une introduction et une conclusion.
-- Ajoute des H2 + H3 clairs et optimisés SEO.
-- Ajoute un lien externe fiable (Wikipedia, Ameli, Inserm).
-- Ne dis jamais que l’article est généré par une IA.
-- Pas d’emojis.
-- HTML propre uniquement.
-
-IMPORTANT :
-À la fin de l’article, insère EXACTEMENT ce bloc HTML sans rien modifier :
-
-${fullShowcaseHTML}
-
-RENVOIE UNIQUEMENT CE JSON STRICT :
+Réponds UNIQUEMENT avec :
 {
   "title": "",
   "content_html": ""
 }
 `;
 
-        /* ------------------------------------------------------------------
-           🔥 APPEL OPENAI
-        ------------------------------------------------------------------ */
         const ai = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.7,
+            temperature: 0.7
         });
 
         let output = ai.choices[0].message.content.trim();
-        output = output.replace(/```json|```/g, "").trim();
-
+        output = output.replace(/```json|```/g, "");
         const json = JSON.parse(output);
 
-        /* ------------------------------------------------------------------
-           🔥 CRÉATION SUR SHOPIFY
-        ------------------------------------------------------------------ */
-        const newArticle = {
+        const newArticle = await createBlogArticle(blogId, {
             title: json.title,
             body_html: json.content_html,
             published_at: scheduleDate || null
-        };
-
-        const created = await createBlogArticle(blogId, newArticle);
-
-        res.json({
-            success: true,
-            message: "Article généré avec bloc produits premium",
-            created
         });
 
+        res.json({ success: true, created: newArticle });
+
     } catch (error) {
-        console.error("❌ Error /blogs/create", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-
 /* -------------------------------------------------------------
-   🔥 AUTOMATISATION QUOTIDIENNE DES ARTICLES DE BLOG
+   🔥 AUTOMATISATION QUOTIDIENNE
 -------------------------------------------------------------- */
 
 let autoBlogEnabled = false;
 let autoBlogTime = "09:00";
 let autoBlogTimer = null;
 
+// STATUS
 router.get("/blogs/auto/status", (req, res) => {
     res.json({
         success: true,
@@ -232,6 +152,7 @@ router.get("/blogs/auto/status", (req, res) => {
     });
 });
 
+// START AUTOMATION
 router.post("/blogs/auto/start", (req, res) => {
     const { time } = req.body;
 
@@ -243,34 +164,51 @@ router.post("/blogs/auto/start", (req, res) => {
     if (autoBlogTimer) clearInterval(autoBlogTimer);
 
     autoBlogTimer = setInterval(async () => {
-        if (!autoBlogEnabled) return;
-
         const now = new Date();
-        const h = now.getHours().toString().padStart(2, "0");
-        const m = now.getMinutes().toString().padStart(2, "0");
+        const h = String(now.getHours()).padStart(2, "0");
+        const m = String(now.getMinutes()).padStart(2, "0");
 
-        if (`${h}:${m}` === autoBlogTime) {
-            console.log("⏰ CRON — génération automatique");
+        if (autoBlogEnabled && `${h}:${m}` === autoBlogTime) {
             await autoBlogGenerate();
         }
     }, 60000);
 
-    res.json({ success: true, message: "Automatisation activée" });
+    res.json({ success: true });
 });
 
+// STOP AUTOMATION
 router.post("/blogs/auto/stop", (req, res) => {
     autoBlogEnabled = false;
     if (autoBlogTimer) clearInterval(autoBlogTimer);
-    res.json({ success: true, message: "Automatisation désactivée" });
+    res.json({ success: true });
 });
 
-// 🔥 Fonction appelée automatiquement chaque jour
+// FUNCTION AUTOMATION
 async function autoBlogGenerate() {
     try {
         const blogs = await getAllBlogs();
         const collections = await getAllCollections();
 
-        const blogId = blogs[0]?.id;
-        const selected = collections[Math.floor(Math.random() * collections.length)];
+        if (!blogs.length) return;
 
-        if (!
+        const blogId = blogs[0].id;
+        const c = collections[Math.floor(Math.random() * collections.length)];
+
+        await fetch(`${process.env.SERVER_URL}/api/blogs/create`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                blogId,
+                topic: `Astuces et nouveautés : ${c.title}`,
+                scheduleDate: null
+            })
+        });
+
+        console.log("✔ Article auto généré");
+
+    } catch (err) {
+        console.log("❌ AutoBlog error:", err.message);
+    }
+}
+
+module.exports = router;
