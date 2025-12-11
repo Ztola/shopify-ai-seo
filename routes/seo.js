@@ -404,6 +404,68 @@ Proposer subtilement le produit comme solution naturelle : <a href="${productUrl
   return JSON.parse(raw);
 }
 
+// -------------------------------------------------------------
+// 🧠 ROUTE 4 — AUTO-BLOG (création d’article automatique)
+// -------------------------------------------------------------
+router.post("/auto-blog", async (req, res) => {
+  try {
+    const { blogId, topic, scheduled_date } = req.body;
+
+    if (!blogId || !topic) {
+      return res.status(400).json({ success: false, error: "Missing blogId or topic" });
+    }
+
+    // Récupérer les informations du blog
+    const blogs = await getAllBlogs();
+    const blog = blogs.find(b => b.id == blogId);
+
+    if (!blog) {
+      return res.status(404).json({ success: false, error: "Blog not found" });
+    }
+
+    // Choisir un produit aléatoire pour la bannière
+    const products = await getAllProducts();
+    if (products.length === 0) {
+      return res.status(400).json({ success: false, error: "No products available" });
+    }
+
+    const product = products[Math.floor(Math.random() * products.length)];
+
+    const productUrl = `${SHOP_URL}/products/${product.handle}`;
+    const productImage = product?.image?.src || "";
+    const productPrice = product?.variants?.[0]?.price || "";
+    const collectionUrl = `${SHOP_URL}/collections/all`;
+
+    // Générer l’article via IA
+    const article = await createBlogArticle({
+      title: topic,
+      prompt: topic,
+      brand: getDynamicBrandName(),
+      collectionUrl,
+      productUrl,
+      productImage,
+      productName: product.title,
+      productPrice
+    });
+
+    // Publier l'article sur Shopify
+    const created = await axios.post(`${process.env.SERVER_URL}/shopify/create-article`, {
+      blogId,
+      title: article.title,
+      html: article.html,
+      scheduled_date: scheduled_date || null
+    });
+
+    res.json({ success: true, article: created.data });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 
 // -------------------------------------------------------------
 // 🔥 EXPORT ROUTER
