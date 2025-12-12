@@ -1,5 +1,5 @@
 // =============================================================
-// 🧠 SEO.JS — VERSION FINALE COMPLÈTE & STABLE
+// 🧠 SEO.JS — VERSION FINALE STABLE (BUG DOMAINE CORRIGÉ)
 // =============================================================
 
 const express = require("express");
@@ -17,8 +17,6 @@ const {
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
-
-const SHOP_URL = `https://${req.headers["x-shopify-url"]}`;
 
 // =============================================================
 // 🧮 SCORE SEO
@@ -46,12 +44,15 @@ function computeSeoScore({ description, metaTitle, metaDescription }) {
 // =============================================================
 router.post("/optimize-product", async (req, res) => {
   try {
+    // ✅ BOUTIQUE ACTIVE (PLUS JAMAIS .env)
+    const SHOP_URL = `https://${req.headers["x-shopify-url"]}`;
+
     const { productId } = req.body;
     if (!productId) {
       return res.status(400).json({ error: "Missing productId" });
     }
 
-    // Produit
+    // Produit Shopify
     const product = await getProductById(req, productId);
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
@@ -66,7 +67,7 @@ router.post("/optimize-product", async (req, res) => {
       });
     }
 
-    // Collection + produits liés
+    // Recherche collection + produits liés
     const collections = await getAllCollections(req);
     let selectedCollection = null;
     let relatedProducts = [];
@@ -80,42 +81,51 @@ router.post("/optimize-product", async (req, res) => {
       }
     }
 
+    // ✅ MAILLAGE INTERNE — TOUJOURS BON DOMAINE
     const collectionUrl = selectedCollection
       ? `${SHOP_URL}/collections/${selectedCollection.handle}`
-      : "Aucune";
+      : "";
 
-    const relatedLink = relatedProducts[0]
+    const relatedProductUrl = relatedProducts[0]
       ? `${SHOP_URL}/products/${relatedProducts[0].handle}`
       : "";
 
     // =========================================================
-    // 🧠 PROMPT SEO (TES INTENTIONS CONSERVÉES)
+    // 🧠 PROMPT SEO (INTENTION CONSERVÉE)
     // =========================================================
     const prompt = `
 Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
 
-Structure obligatoire :
-<h2>{{PRODUCT_NAME}}</h2>
-<p>Introduction avec lien vers la collection : <a href="${collectionUrl}">${selectedCollection?.title || "Collection"}</a></p>
-<p>Lien vers un produit recommandé : ${relatedLink}</p>
+Structure OBLIGATOIRE :
+
+<h2>${product.title}</h2>
+
+<p>
+Introduction avec lien vers la collection :
+<a href="${collectionUrl}">${selectedCollection?.title || "Notre collection"}</a>
+</p>
+
+<p>
+Lien interne vers un produit recommandé :
+<a href="${relatedProductUrl}">${relatedProducts[0]?.title || ""}</a>
+</p>
 
 <h3>Pourquoi choisir ce produit ?</h3>
+
 <ul>
-<li>Bénéfice clair</li>
-<li>Bénéfice clair</li>
-<li>Bénéfice clair</li>
-<li>Bénéfice clair</li>
-<li>Bénéfice clair</li>
+<li>Bénéfice clair et concret.</li>
+<li>Bénéfice clair et concret.</li>
+<li>Bénéfice clair et concret.</li>
+<li>Bénéfice clair et concret.</li>
+<li>Bénéfice clair et concret.</li>
 </ul>
 
 <p>
-Deux paragraphes détaillés + 1 lien externe fiable
-(Wikipédia, Inserm ou Futura-Sciences).
+Deux paragraphes détaillés sur l’usage et le confort.
+Inclure 1 lien externe fiable (Wikipédia, Inserm ou Futura-Sciences).
 </p>
 
-<p>Conclusion émotionnelle.</p>
-
-Produit : ${product.title}
+<p>Conclusion émotionnelle incitant à l’achat.</p>
 
 Description actuelle :
 ${product.body_html || "Aucune"}
@@ -147,15 +157,15 @@ Réponse JSON STRICTE :
       metaDescription: seo.meta_description
     });
 
-    // Update contenu
+    // Update contenu produit
     await updateProduct(req, productId, {
       title: seo.title || product.title,
       body_html: seo.description_html
     });
 
-    // Update meta SEO Shopify
+    // Update META SEO Shopify
     await fetch(
-      `https://${process.env.SHOPIFY_SHOP_URL}/admin/api/2024-01/products/${productId}.json`,
+      `https://${req.headers["x-shopify-url"]}/admin/api/2024-01/products/${productId}.json`,
       {
         method: "PUT",
         headers: {
@@ -178,8 +188,7 @@ Réponse JSON STRICTE :
     return res.json({
       success: true,
       optimized: true,
-      score: seoScore,
-      seo
+      score: seoScore
     });
 
   } catch (err) {
@@ -188,63 +197,6 @@ Réponse JSON STRICTE :
       success: false,
       error: err.message
     });
-  }
-});
-
-// =============================================================
-// 🔥 ROUTE — OPTIMISATION SEO EN MASSE (BATCH SÉCURISÉ)
-// =============================================================
-router.post("/optimize-batch", async (req, res) => {
-  try {
-    const { productIds } = req.body;
-    if (!Array.isArray(productIds) || !productIds.length) {
-      return res.status(400).json({ error: "productIds requis" });
-    }
-
-    const results = [];
-    const batchSize = 10;
-
-    for (let i = 0; i < productIds.length; i += batchSize) {
-      const batch = productIds.slice(i, i + batchSize);
-
-      for (const productId of batch) {
-        try {
-          const r = await fetch(
-            `${process.env.SERVER_URL}/api/optimize-product`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-shopify-url": req.headers["x-shopify-url"],
-                "x-shopify-token": req.headers["x-shopify-token"]
-              },
-              body: JSON.stringify({ productId })
-            }
-          );
-
-          const json = await r.json();
-          results.push({ productId, success: true, score: json.score });
-
-        } catch (err) {
-          results.push({ productId, success: false });
-        }
-      }
-
-      // Pause sécurité
-      if (i + batchSize < productIds.length) {
-        await new Promise(r => setTimeout(r, 30000));
-      }
-    }
-
-    return res.json({
-      success: true,
-      total: productIds.length,
-      results
-    });
-
-  } catch (err) {
-    console.error("❌ optimize-batch error:", err);
-    return res.status(500).json({ error: err.message });
   }
 });
 
