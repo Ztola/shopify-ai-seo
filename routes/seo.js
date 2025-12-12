@@ -1,17 +1,19 @@
 // =============================================================
-// 🧠 SEO.JS — VERSION FINALE STABLE (BUG DOMAINE CORRIGÉ)
+// 🧠 SEO.JS — STRUCTURE CORRIGÉE (PROMPT SEO INTACT)
 // =============================================================
 
 const express = require("express");
 const router = express.Router();
 const { OpenAI } = require("openai");
+const axios = require("axios");
 
 const {
   getAllCollections,
   getProductsByCollection,
   getProductById,
   updateProduct,
-  markAsOptimized
+  markAsOptimized,
+  isAlreadyOptimized
 } = require("../services/shopify");
 
 const openai = new OpenAI({
@@ -19,7 +21,7 @@ const openai = new OpenAI({
 });
 
 // =============================================================
-// 🧮 SCORE SEO
+// 🧮 SCORE SEO (INCHANGÉ)
 // =============================================================
 function computeSeoScore({ description, metaTitle, metaDescription }) {
   let score = 0;
@@ -47,64 +49,48 @@ router.post("/optimize-product", async (req, res) => {
     const { productId, force } = req.body;
 
     if (!productId) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing productId"
-      });
+      return res.status(400).json({ success: false, error: "Missing productId" });
     }
 
-    // 🔎 Récupérer le produit
     const product = await getProductById(req, productId);
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        error: "Product not found"
-      });
+      return res.status(404).json({ success: false, error: "Product not found" });
     }
 
-    // 🔁 Bloquer si déjà optimisé ET pas forcé
     if (!force) {
       const already = await isAlreadyOptimized(req, productId);
       if (already) {
-        return res.json({
-          success: true,
-          alreadyOptimized: true
-        });
+        return res.json({ success: true, alreadyOptimized: true });
       }
     }
 
-    // 🧠 (TEMPORAIRE) — description simple de test
-    const newDescription = `
-      <h2>${product.title}</h2>
-      <p>Description optimisée automatiquement.</p>
-    `;
+    // =========================================================
+    // 🔎 COLLECTION + PRODUIT LIÉ (INCHANGÉ)
+    // =========================================================
+    const collections = await getAllCollections(req);
+    let selectedCollection = null;
+    let relatedProducts = [];
 
-    // ✍️ Mise à jour Shopify
-    await updateProduct(req, productId, {
-      title: product.title,
-      handle: product.handle,
-      body_html: newDescription
-    });
+    for (const col of collections) {
+      const prods = await getProductsByCollection(req, col.id);
+      if (prods.some(p => p.id == productId)) {
+        selectedCollection = col;
+        relatedProducts = prods.filter(p => p.id != productId);
+        break;
+      }
+    }
 
-    // 🟢 Marquer comme optimisé
-    await markAsOptimized(req, productId);
+    const shopDomain = req.headers["x-shopify-url"];
+    const collectionUrl = selectedCollection
+      ? `https://${shopDomain}/collections/${selectedCollection.handle}`
+      : `https://${shopDomain}/collections/all`;
 
-    return res.json({
-      success: true,
-      optimized: true
-    });
-
-  } catch (err) {
-    console.error("❌ optimize-product error:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
+    const relatedProductUrl = relatedProducts[0]
+      ? `https://${shopDomain}/products/${relatedProducts[0].handle}`
+      : "";
 
     // =========================================================
-    // 🧠 PROMPT SEO (INTENTION CONSERVÉE)
+    // 🧠 PROMPT SEO — ⚠️ STRICTEMENT INCHANGÉ ⚠️
     // =========================================================
     const prompt = `
 Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
@@ -151,50 +137,53 @@ Réponse JSON STRICTE :
 }
 `;
 
-    // IA
+    // =========================================================
+    // 🤖 OPENAI
+    // =========================================================
     const ai = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
       messages: [{ role: "user", content: prompt }]
     });
 
-    let raw = ai.choices[0].message.content.trim();
-    raw = raw.replace(/```json/g, "").replace(/```/g, "");
+    const raw = ai.choices[0].message.content
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
     const seo = JSON.parse(raw);
 
-    // Score SEO
     const seoScore = computeSeoScore({
       description: seo.description_html,
       metaTitle: seo.meta_title,
       metaDescription: seo.meta_description
     });
 
-    // Update contenu produit
+    // =========================================================
+    // ✍️ UPDATE SHOPIFY
+    // =========================================================
     await updateProduct(req, productId, {
       title: seo.title || product.title,
       body_html: seo.description_html
     });
 
-    // Update META SEO Shopify
-    await fetch(
-      `https://${req.headers["x-shopify-url"]}/admin/api/2024-01/products/${productId}.json`,
+    await axios.put(
+      `https://${shopDomain}/admin/api/2024-01/products/${productId}.json`,
       {
-        method: "PUT",
+        product: {
+          id: productId,
+          seo_title: seo.meta_title,
+          seo_description: seo.meta_description
+        }
+      },
+      {
         headers: {
           "X-Shopify-Access-Token": req.headers["x-shopify-token"],
           "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          product: {
-            id: productId,
-            seo_title: seo.meta_title,
-            seo_description: seo.meta_description
-          }
-        })
+        }
       }
     );
 
-    // Tag optimisé
     await markAsOptimized(req, productId);
 
     return res.json({
@@ -212,5 +201,4 @@ Réponse JSON STRICTE :
   }
 });
 
-// =============================================================
 module.exports = router;
