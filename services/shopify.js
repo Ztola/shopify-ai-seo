@@ -174,34 +174,36 @@ async function getAllCollections(req) {
 }
 
 // ------------------------------------------------------------
-// 🔥 7) GET ALL PRODUCTS (pagination automatique)
+// 🔥 GET PRODUCTS PAGE (ADMIN UI SAFE)
 // ------------------------------------------------------------
-async function getAllProducts(req) {
+async function getProductsPage(req, limit = 50, pageInfo = null) {
   const client = getShopifyClient(req);
   client.interceptors.request.use((c) => rateLimiter(client, c));
 
-  let products = [];
-  let url = `/products.json?limit=250`;
+  let url = `/products.json?limit=${limit}`;
 
-  while (url) {
-    const res = await client.get(url);
-    products = products.concat(res.data.products);
-
-    const link = res.headers["link"];
-
-    if (link && link.includes('rel="next"')) {
-      url = link
-        .split(",")
-        .find((s) => s.includes('rel="next"'))
-        .match(/<(.+?)>/)[1]
-        .replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
-    } else {
-      url = null;
-    }
+  if (pageInfo) {
+    url += `&page_info=${pageInfo}`;
   }
 
-  return products;
+  const res = await client.get(url);
+
+  const link = res.headers["link"];
+  let nextPageInfo = null;
+
+  if (link && link.includes('rel="next"')) {
+    nextPageInfo = link
+      .split(",")
+      .find((s) => s.includes('rel="next"'))
+      .match(/page_info=([^&>]+)/)[1];
+  }
+
+  return {
+    products: res.data.products || [],
+    nextPageInfo
+  };
 }
+
 
 // ------------------------------------------------------------
 // 🔥 8) GET PRODUCTS OF A COLLECTION
@@ -274,9 +276,13 @@ module.exports = {
   updateProduct,
   markAsOptimized,
   isAlreadyOptimized,
+
   getAllProducts,
+  getProductsPage, // ⬅️ AJOUT OBLIGATOIRE
+
   getAllCollections,
   getProductsByCollection,
+
   getAllBlogs,
   getArticlesByBlog,
   createBlogArticle
