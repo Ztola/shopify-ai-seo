@@ -301,22 +301,26 @@ async function getProductsForView(req, max = 1000) {
 // 🔥 EXPORTS
 // ============================================================
 module.exports = {
+  // PRODUITS
   getProductById,
   getProductCollection,
   updateProduct,
   markAsOptimized,
   isAlreadyOptimized,
 
-  // getAllProducts, ❌ SUPPRIMÉ TEMPORAIREMENT
-
+  // AFFICHAGE / ADMIN
   getProductsPage,
   getProductsForView,
 
+  // FULL / IA
+  getAllProducts,
+
+  // COLLECTIONS
   getAllCollections,
   getProductsByCollection,
 
+  // BLOG
   getAllBlogs,
   getArticlesByBlog,
   createBlogArticle
 };
-
