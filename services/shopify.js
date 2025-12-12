@@ -1,3 +1,15 @@
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+const Bottleneck = require("bottleneck");
+
+const limiter = new Bottleneck({
+  minTime: 550,        // 1 requête toutes les 550ms
+  maxConcurrent: 1
+});
+
+
 // ============================================================
 // 🔥 Shopify Service — Version PRO Multi-Boutiques
 // ============================================================
@@ -165,7 +177,10 @@ async function getAllCollections(req) {
   client.interceptors.request.use((c) => rateLimiter(client, c));
 
   const custom = await client.get(`/custom_collections.json?limit=250`);
-  const smart = await client.get(`/smart_collections.json?limit=250`);
+
+await sleep(600); // ⏳ anti-429 Shopify
+
+  const smart  = await client.get(`/smart_collections.json?limit=250`);
 
   return [
     ...(custom.data.custom_collections || []),
