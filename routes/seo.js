@@ -18,7 +18,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const SHOP_URL = `https://${process.env.SHOPIFY_SHOP_URL}`;
+const SHOP_URL = `https://${req.headers["x-shopify-url"]}`;
 
 // =============================================================
 // 🧮 SCORE SEO
