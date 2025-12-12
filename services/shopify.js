@@ -157,11 +157,25 @@ async function getAllCollections(req) {
 async function getProductsByCollection(req, collectionId) {
   const client = getShopifyClient(req);
 
-  const res = await limiter.schedule(() =>
-    client.get(`/collections/${collectionId}/products.json?limit=250`)
-  );
+  try {
+    const res = await limiter.schedule(() =>
+      client.get(`/collections/${collectionId}/products.json?limit=250`)
+    );
 
-  return res.data.products || [];
+    return Array.isArray(res.data.products)
+      ? res.data.products
+      : [];
+
+  } catch (err) {
+    console.warn(
+      `⚠️ [getProductsByCollection] Collection ${collectionId} ignorée :`,
+      err.response?.status,
+      err.message
+    );
+
+    // ⛔ NE JAMAIS planter la route
+    return [];
+  }
 }
 
 // ============================================================
