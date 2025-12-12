@@ -31,20 +31,21 @@ router.get("/shop-data", async (req, res) => {
     for (let col of collections) {
       const products = await getProductsByCollection(req, col.id);
 
-      finalCollections.push({
-        id: col.id,
-        title: col.title,
-        handle: col.handle,
-        products: products.map(p => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          optimized: p?.tags?.includes("optimized") ?? false,
-          image: p?.image?.src || null,
-          price: p?.variants?.[0]?.price || null
-        }))
-      });
-    }
+      if (products.length > 0) {
+  finalCollections.push({
+    id: col.id,
+    title: col.title,
+    handle: col.handle,
+    products: products.map(p => ({
+      id: p.id,
+      title: p.title,
+      handle: p.handle,
+      optimized: p?.tags?.includes("optimized") ?? false,
+      image: p?.image?.src || null,
+      price: p?.variants?.[0]?.price || null
+    }))
+  });
+}
 
     res.json({
       success: true,
