@@ -98,7 +98,7 @@ Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions prod
 
 Ta mission : générer une description HTML complète au même style, même structure et même logique que l’exemple suivant, mais totalement adaptée au produit donné :
 
-<h2>${product.title}</h2>
+<h2>${product.title} Ajoutez le mot-clé principal au titre SEO.</h2>
 
 <p>
 Introduction avec ajoute d'encre optimiser avec lien vers la collection :
@@ -106,7 +106,7 @@ Introduction avec ajoute d'encre optimiser avec lien vers la collection :
 </p>
 
 <p>
-Paragraphe avec encre optimiséLien interne vers un produit recommandé :
+Paragraphe long avec encre optimiséLien interne vers un produit recommandé :
 <a href="${relatedProductUrl}">${relatedProducts[0]?.title || ""}</a>
 </p>
 
