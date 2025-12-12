@@ -267,6 +267,36 @@ async function createBlogArticle(req, blogId, article) {
   return res.data.article;
 }
 
+// ------------------------------------------------------------
+// 🔥 GET PRODUCTS FOR VIEW (UP TO 1000 MAX)
+// ------------------------------------------------------------
+async function getProductsForView(req, max = 1000) {
+  const client = getShopifyClient(req);
+  client.interceptors.request.use((c) => rateLimiter(client, c));
+
+  let products = [];
+  let url = `/products.json?limit=250`;
+
+  while (url && products.length < max) {
+    const res = await client.get(url);
+    products = products.concat(res.data.products);
+
+    const link = res.headers["link"];
+    if (link && link.includes('rel="next"')) {
+      url = link
+        .split(",")
+        .find((s) => s.includes('rel="next"'))
+        ?.match(/<(.+?)>/)?.[1]
+        ?.replace(/^https:\/\/[^/]+\/admin\/api\/2024-01/, "");
+    } else {
+      url = null;
+    }
+  }
+
+  return products.slice(0, max);
+}
+
+
 // ============================================================
 // 🔥 EXPORTS
 // ============================================================
@@ -278,7 +308,8 @@ module.exports = {
   isAlreadyOptimized,
 
   getAllProducts,
-  getProductsPage, // ⬅️ AJOUT OBLIGATOIRE
+  getProductsPage,
+  getProductsForView,
 
   getAllCollections,
   getProductsByCollection,
