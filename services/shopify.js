@@ -307,7 +307,8 @@ module.exports = {
   markAsOptimized,
   isAlreadyOptimized,
 
-  getAllProducts,
+  // getAllProducts, ❌ SUPPRIMÉ TEMPORAIREMENT
+
   getProductsPage,
   getProductsForView,
 
@@ -318,3 +319,4 @@ module.exports = {
   getArticlesByBlog,
   createBlogArticle
 };
+
