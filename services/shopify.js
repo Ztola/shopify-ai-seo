@@ -312,9 +312,6 @@ module.exports = {
   getProductsPage,
   getProductsForView,
 
-  // FULL / IA
-  getAllProducts,
-
   // COLLECTIONS
   getAllCollections,
   getProductsByCollection,
@@ -324,3 +321,4 @@ module.exports = {
   getArticlesByBlog,
   createBlogArticle
 };
+
