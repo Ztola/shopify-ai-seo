@@ -1,3 +1,22 @@
+function computeSeoScore({ description, metaTitle, metaDescription }) {
+  let score = 0;
+
+  const text = description.replace(/<[^>]*>/g, " ");
+  const words = text.trim().split(/\s+/).length;
+
+  if (words > 300) score += 20;
+  if (/<h2/i.test(description)) score += 15;
+  if (/<h3/i.test(description)) score += 10;
+  if ((description.match(/href="\/collections\//g) || []).length >= 1) score += 8;
+  if ((description.match(/href="\/products\//g) || []).length >= 1) score += 7;
+  if (/(wikipedia|inserm|futura-sciences)/i.test(description)) score += 10;
+  if (metaTitle) score += 15;
+  if (metaDescription) score += 15;
+
+  return Math.min(score, 100);
+}
+
+
 // =============================================================
 // 🧠 SEO.JS — VERSION FINALE STABLE & SEO-READY
 // =============================================================
@@ -130,6 +149,12 @@ ${product.body_html || "Aucune"}
 
     const seo = JSON.parse(raw);
 
+    const seoScore = computeSeoScore({
+  description: seo.description_html,
+  metaTitle: seo.meta_title,
+  metaDescription: seo.meta_description
+});
+
     // =========================================================
     // 🛠️ UPDATE SHOPIFY — CONTENU
     // =========================================================
@@ -177,6 +202,12 @@ ${product.body_html || "Aucune"}
       error: err.message
     });
   }
+});
+
+return res.json({
+  success: true,
+  optimized: true,
+  score: seoScore
 });
 
 // =============================================================
