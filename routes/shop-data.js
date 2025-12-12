@@ -7,30 +7,35 @@ const {
 } = require("../services/shopify");
 
 /* ===============================================================
-   🔥 Route : GET /api/shop-data (SAFE & STABLE)
+   🔥 Route : GET /api/shop-data — DEBUG HARD
 ================================================================ */
 router.get("/shop-data", async (req, res) => {
 
-  const shopUrl = req.headers["x-shopify-url"];
-  const token   = req.headers["x-shopify-token"];
-
-  // 🛑 Sécurité absolue
-  if (!shopUrl || !token) {
-    console.warn("⛔ [shop-data] Appel sans headers Shopify");
-
-    return res.status(400).json({
-      success: false,
-      error: "Missing Shopify headers"
-    });
-  }
-
-  console.log("📦 [shop-data] Récupération des données…", shopUrl);
+  console.log("🟡 [shop-data] Route appelée");
 
   try {
-    const collections = await getAllCollections(req);
+    const shopUrl = req.headers["x-shopify-url"];
+    const token   = req.headers["x-shopify-token"];
 
-    // Aucune collection → réponse propre
+    console.log("🟡 Headers reçus :", {
+      shopUrl,
+      token: token ? "OK" : "MISSING"
+    });
+
+    if (!shopUrl || !token) {
+      console.log("🔴 Headers manquants");
+      return res.status(400).json({
+        success: false,
+        error: "Missing Shopify headers"
+      });
+    }
+
+    console.log("🟢 Appel getAllCollections...");
+    const collections = await getAllCollections(req);
+    console.log("🟢 Collections récupérées :", collections?.length);
+
     if (!collections || !collections.length) {
+      console.log("🟠 Aucune collection");
       return res.json({
         success: true,
         data: { collections: [] }
@@ -40,8 +45,14 @@ router.get("/shop-data", async (req, res) => {
     const finalCollections = [];
 
     for (const col of collections) {
+      console.log("🟡 Collection :", col.id, col.title);
+
       try {
         const products = await getProductsByCollection(req, col.id);
+        console.log(
+          `🟢 Produits récupérés pour ${col.id} :`,
+          products?.length
+        );
 
         finalCollections.push({
           id: col.id,
@@ -51,37 +62,36 @@ router.get("/shop-data", async (req, res) => {
             id: p.id,
             title: p.title,
             handle: p.handle,
-            optimized: Array.isArray(p.tags)
-              ? p.tags.includes("optimized")
-              : (typeof p.tags === "string" ? p.tags.includes("optimized") : false),
+            optimized:
+              typeof p.tags === "string"
+                ? p.tags.includes("optimized")
+                : false,
             image: p?.image?.src || null,
             price: p?.variants?.[0]?.price || null
           }))
         });
 
-      } catch (colErr) {
-        // ⚠️ Une collection qui échoue ne casse PAS tout
-        console.warn(
-          `⚠️ [shop-data] Collection ignorée (${col.id}) :`,
-          colErr.message
+      } catch (productErr) {
+        console.error(
+          "🔴 ERREUR getProductsByCollection :",
+          productErr.message
         );
       }
     }
 
-    // ✅ Réponse finale
+    console.log("🟢 Réponse envoyée");
     return res.json({
       success: true,
-      data: {
-        collections: finalCollections
-      }
+      data: { collections: finalCollections }
     });
 
   } catch (err) {
-    console.error("❌ [shop-data] ERREUR GLOBALE :", err);
+    console.error("🔴 ERREUR FATALE shop-data :", err);
 
     return res.status(500).json({
       success: false,
-      error: err.message || "Internal server error"
+      error: err.message,
+      stack: err.stack
     });
   }
 });
