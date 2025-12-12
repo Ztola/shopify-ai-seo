@@ -44,51 +44,64 @@ function computeSeoScore({ description, metaTitle, metaDescription }) {
 // =============================================================
 router.post("/optimize-product", async (req, res) => {
   try {
-    // ✅ BOUTIQUE ACTIVE (PLUS JAMAIS .env)
-    const SHOP_URL = `https://${req.headers["x-shopify-url"]}`;
+    const { productId, force } = req.body;
 
-    const { productId } = req.body;
     if (!productId) {
-      return res.status(400).json({ error: "Missing productId" });
-    }
-
-    // Produit Shopify
-    const product = await getProductById(req, productId);
-    if (!product) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-
-    // Anti double optimisation
-    if (product.tags?.includes("optimized")) {
-      return res.json({
-        success: true,
-        alreadyOptimized: true,
-        message: "Produit déjà optimisé"
+      return res.status(400).json({
+        success: false,
+        error: "Missing productId"
       });
     }
 
-    // Recherche collection + produits liés
-    const collections = await getAllCollections(req);
-    let selectedCollection = null;
-    let relatedProducts = [];
+    // 🔎 Récupérer le produit
+    const product = await getProductById(req, productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        error: "Product not found"
+      });
+    }
 
-    for (const col of collections) {
-      const prods = await getProductsByCollection(req, col.id);
-      if (prods.some(p => p.id == productId)) {
-        selectedCollection = col;
-        relatedProducts = prods.filter(p => p.id != productId);
-        break;
+    // 🔁 Bloquer si déjà optimisé ET pas forcé
+    if (!force) {
+      const already = await isAlreadyOptimized(req, productId);
+      if (already) {
+        return res.json({
+          success: true,
+          alreadyOptimized: true
+        });
       }
     }
 
-    // ✅ MAILLAGE INTERNE — TOUJOURS BON DOMAINE
-    const collectionUrl = selectedCollection
-      ? `${SHOP_URL}/collections/${selectedCollection.handle}`
-      : "";
+    // 🧠 (TEMPORAIRE) — description simple de test
+    const newDescription = `
+      <h2>${product.title}</h2>
+      <p>Description optimisée automatiquement.</p>
+    `;
 
-    const relatedProductUrl = relatedProducts[0]
-      ? `${SHOP_URL}/products/${relatedProducts[0].handle}`
-      : "";
+    // ✍️ Mise à jour Shopify
+    await updateProduct(req, productId, {
+      title: product.title,
+      handle: product.handle,
+      body_html: newDescription
+    });
+
+    // 🟢 Marquer comme optimisé
+    await markAsOptimized(req, productId);
+
+    return res.json({
+      success: true,
+      optimized: true
+    });
+
+  } catch (err) {
+    console.error("❌ optimize-product error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
 
     // =========================================================
     // 🧠 PROMPT SEO (INTENTION CONSERVÉE)
