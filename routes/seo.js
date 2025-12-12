@@ -44,6 +44,70 @@ const SHOP_URL = `https://${process.env.SHOPIFY_SHOP_URL}`;
 // =============================================================
 // 🔥 ROUTE — OPTIMISATION SEO PRODUIT
 // =============================================================
+router.post("/optimize-batch", async (req, res) => {
+  try {
+    const { productIds } = req.body;
+
+    if (!Array.isArray(productIds) || !productIds.length) {
+      return res.status(400).json({ error: "productIds requis" });
+    }
+
+    const results = [];
+    const batchSize = 10;
+
+    for (let i = 0; i < productIds.length; i += batchSize) {
+      const batch = productIds.slice(i, i + batchSize);
+
+      for (const productId of batch) {
+        try {
+          const r = await fetch(
+            `${process.env.SERVER_URL}/api/optimize-product`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-shopify-url": req.headers["x-shopify-url"],
+                "x-shopify-token": req.headers["x-shopify-token"]
+              },
+              body: JSON.stringify({ productId })
+            }
+          );
+
+          const json = await r.json();
+
+          results.push({
+            productId,
+            success: true,
+            score: json.score ?? null
+          });
+
+        } catch (err) {
+          results.push({
+            productId,
+            success: false,
+            error: err.message
+          });
+        }
+      }
+
+      // ⏸ Pause 30 secondes entre chaque batch
+      if (i + batchSize < productIds.length) {
+        await new Promise(r => setTimeout(r, 30000));
+      }
+    }
+
+    return res.json({
+      success: true,
+      total: productIds.length,
+      results
+    });
+
+  } catch (err) {
+    console.error("❌ optimize-batch error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/optimize-product", async (req, res) => {
   try {
     const { productId } = req.body;
@@ -56,6 +120,14 @@ router.post("/optimize-product", async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
+
+    if (product.tags?.includes("optimized")) {
+  return res.json({
+    success: true,
+    alreadyOptimized: true,
+    message: "Produit déjà optimisé"
+  });
+}
 
     // 2️⃣ Trouver la collection du produit
     const collections = await getAllCollections(req);
