@@ -96,24 +96,23 @@ router.post("/optimize-product", async (req, res) => {
     const prompt = `
 Tu es un expert SEO Shopify spécialisé dans la rédaction de descriptions produits orientées conversion.
 
-Structure OBLIGATOIRE :
+Ta mission : générer une description HTML complète au même style, même structure et même logique que l’exemple suivant, mais totalement adaptée au produit donné :
 
 <h2>${product.title}</h2>
 
 <p>
-Introduction avec lien vers la collection :
+Introduction avec ajoute d'encre optimiser avec lien vers la collection :
 <a href="${collectionUrl}">${selectedCollection?.title || "Notre collection"}</a>
 </p>
 
 <p>
-Lien interne vers un produit recommandé :
+Paragraphe avec encre optimiséLien interne vers un produit recommandé :
 <a href="${relatedProductUrl}">${relatedProducts[0]?.title || ""}</a>
 </p>
 
 <h3>Pourquoi choisir ce produit ?</h3>
 
 <ul>
-<li>Bénéfice clair et concret.</li>
 <li>Bénéfice clair et concret.</li>
 <li>Bénéfice clair et concret.</li>
 <li>Bénéfice clair et concret.</li>
