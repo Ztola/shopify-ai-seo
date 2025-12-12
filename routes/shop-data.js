@@ -7,15 +7,30 @@ const {
 } = require("../services/shopify");
 
 /* ===============================================================
-   🔥 Route : GET /api/shop-data
+   🔥 Route : GET /api/shop-data (SAFE & STABLE)
 ================================================================ */
 router.get("/shop-data", async (req, res) => {
-  try {
-    console.log("📦 [shop-data] Récupération des données…", req.headers["x-shopify-url"]);
 
+  const shopUrl = req.headers["x-shopify-url"];
+  const token   = req.headers["x-shopify-token"];
+
+  // 🛑 Sécurité absolue
+  if (!shopUrl || !token) {
+    console.warn("⛔ [shop-data] Appel sans headers Shopify");
+
+    return res.status(400).json({
+      success: false,
+      error: "Missing Shopify headers"
+    });
+  }
+
+  console.log("📦 [shop-data] Récupération des données…", shopUrl);
+
+  try {
     const collections = await getAllCollections(req);
 
-    if (!collections || collections.length === 0) {
+    // Aucune collection → réponse propre
+    if (!collections || !collections.length) {
       return res.json({
         success: true,
         data: { collections: [] }
@@ -25,34 +40,48 @@ router.get("/shop-data", async (req, res) => {
     const finalCollections = [];
 
     for (const col of collections) {
-      const products = await getProductsByCollection(req, col.id);
+      try {
+        const products = await getProductsByCollection(req, col.id);
 
-      finalCollections.push({
-        id: col.id,
-        title: col.title,
-        handle: col.handle,
-        products: products.map(p => ({
-          id: p.id,
-          title: p.title,
-          handle: p.handle,
-          optimized: p?.tags?.includes("optimized") ?? false,
-          image: p?.image?.src || null,
-          price: p?.variants?.[0]?.price || null
-        }))
-      });
+        finalCollections.push({
+          id: col.id,
+          title: col.title,
+          handle: col.handle,
+          products: (products || []).map(p => ({
+            id: p.id,
+            title: p.title,
+            handle: p.handle,
+            optimized: Array.isArray(p.tags)
+              ? p.tags.includes("optimized")
+              : (typeof p.tags === "string" ? p.tags.includes("optimized") : false),
+            image: p?.image?.src || null,
+            price: p?.variants?.[0]?.price || null
+          }))
+        });
+
+      } catch (colErr) {
+        // ⚠️ Une collection qui échoue ne casse PAS tout
+        console.warn(
+          `⚠️ [shop-data] Collection ignorée (${col.id}) :`,
+          colErr.message
+        );
+      }
     }
 
-    // ✅ RÉPONSE FINALE
+    // ✅ Réponse finale
     return res.json({
       success: true,
-      data: { collections: finalCollections }
+      data: {
+        collections: finalCollections
+      }
     });
 
   } catch (err) {
-    console.error("❌ ERREUR shop-data.js :", err);
+    console.error("❌ [shop-data] ERREUR GLOBALE :", err);
+
     return res.status(500).json({
       success: false,
-      error: err.message
+      error: err.message || "Internal server error"
     });
   }
 });
